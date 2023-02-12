@@ -6,7 +6,7 @@ See full demo - [wc-wysiwyg demo](https://webislife.ru/demo/wc-wysiwyg/) list an
 ## Install
 
 ```
-npm i wc-wysiwyg
+npm i wc-wysiwyg-editor --save
 ```
 
 ## Commands

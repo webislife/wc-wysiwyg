@@ -1,0 +1,39 @@
+{
+    "name": "wc-wysiwyg",
+    "version": "0.9.0",
+    "description": "WYWSIWYG HTML5 Editor written in ts and designed by web-componennt, support all JS frameworks and browsers",
+    "main": "src/wc-wysiwyg.ts",
+    "scripts": {
+      "sass": "./node_modules/node-sass/bin/node-sass ./src -o ./dist",
+      "tsc": "./node_modules/.bin/tsc",
+      "babel-minify": " ./node_modules/.bin/minify ./dist --mangle=false --out-dir ./dist --sourceType=module",
+      "build": "npm run sass && npm run tsc && npm run babel-minify"
+    },
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/webislife/wc-wysiwyg.git"
+    },
+    "keywords": [
+      "web-component",
+      "custom-element",
+      "time",
+      "html5",
+      "esnext",
+      "typescript"
+    ],
+    "author": "srokoff",
+    "license": "MIT",
+    "bugs": {
+      "url": "https://github.com/webislife/wc-wysiwyg/issues"
+    },
+    "homepage": "https://github.com/webislife/wc-wysiwyg#readme",
+    "devDependencies": {
+      "babel-minify": "^0.5.2",
+      "node-sass": "^8.0.0",
+      "typescript": "^4.9.4"
+    },
+    "publishConfig": {
+      "@webislife:registry": "https://npm.pkg.github.com"
+    }
+  }
+  

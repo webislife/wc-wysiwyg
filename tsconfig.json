@@ -1,0 +1,13 @@
+{
+    "files": ["src/wc-wysiwyg.ts"],
+    "compilerOptions": {
+      "module": "es2022",
+      "skipLibCheck": true,
+      "allowJs": false,
+      "declaration": false,
+      "outDir": "./dist",
+      "declarationMap": false,
+      "target": "ESNEXT",
+      "removeComments": true,
+    }
+  }

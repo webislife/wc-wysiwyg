@@ -99,7 +99,9 @@ class WCWYSIWYG extends HTMLElement {
             //if check exist selection string
             if(selection !== null && selection.toString().length > 0) {
                 this.EditorInlineActionsForm.style.display = '';
-                this.EditorPropertyForm.style.display = 'none';
+                if(this.EditorPropertyForm){
+                    this.EditorPropertyForm.style.display = 'none';
+                }
                 this.showEditorInlineDialog();
             } else {
                 this.hideEditorInlineDialog();
@@ -128,7 +130,7 @@ class WCWYSIWYG extends HTMLElement {
             this.EditorAllowTags = allowTags.split(',');
             this.EditorTags = allTags.filter(tag => allowTags.includes(tag.tag));
 
-            this.#EditProps = this.getAttribute('data-edit-props') !== null ? JSON.parse(this.getAttribute('data-edit-props')) : false;
+            this.#EditProps = this.getAttribute('data-edit-props') !== null ? JSON.parse(this.getAttribute('data-edit-props') || '') : false;
             this.#Autocomplete = this.getAttribute('data-autocomplete') === '1';
             this.#HideBottomActions = this.getAttribute('data-hide-bottom-actions') === '1';
             //allow inline without ['video','audio','img']
@@ -210,6 +212,93 @@ class WCWYSIWYG extends HTMLElement {
                 classList: ['wc-wysiwyg_bt'],
             });
             
+            //Check custom tags
+            this.EditorCustomTags = JSON.parse( String(this.getAttribute('data-custom-tags')) );
+            if(this.EditorCustomTags !== null) {
+                //Custom panel tags 
+                this.EditorCustomTagsForm = el('fieldset', {
+                    classList: ['wc-wysiwyg_ce'],
+                });
+                //Make custom actions buttons panel
+                this.#makeActionButtons(this.EditorCustomTagsForm as HTMLElement, this.EditorCustomTags);
+
+                this.appendChild(this.EditorCustomTagsForm as HTMLElement);
+            }
+
+            //Node editable
+            this.EditorNode = el('article', {
+                classList: ['wc-wysiwyg_content', this.getAttribute('data-content-class') || ''],
+                props: {
+                    contentEditable: true,
+                    onpointerup: event => {
+                        this.checkCanClearElement(event);
+                        if(this.#EditProps) {
+                            this.checkEditProps(event);
+                        }
+                    },
+                    oninput: event => {
+                        this.updateContent();
+                        if(this.#Autocomplete) {
+                            this.checkAutoComplete();
+                        }
+                    },
+                    //Handle key bindings
+                    onkeydown: event => {
+                        //check hold alt
+                        if(event.altKey) {
+                            //alt+space - move caret to parent node next sibling
+                            if(event.code === 'Space') {
+                                const Selection = window.getSelection();
+                                if(Selection?.type === 'Caret') {
+                                    //insertAdjacentElement dont support textNodes, first insert span
+                                    const span = el('span');
+                                    Selection?.anchorNode?.parentElement?.insertAdjacentElement('afterend', span)
+                                    //after replace span with textnode and select it
+                                    const textN = document.createTextNode('&nbsp');
+                                    span.replaceWith(textN);
+                                    const range = document.createRange();
+                                    range.selectNodeContents(textN);
+                                    Selection.removeAllRanges();
+                                    Selection.addRange(range);
+                                }
+                            }
+                        }
+                        //tag - hide editor dialog
+                        if(event.code === 'Escape') {
+                            this.hideEditorInlineDialog();
+                        }
+                        //enter - set p as default tag in newline
+                        if(event.code === 'Enter' && event.shiftKey === false) {
+                            const Selection = window.getSelection();
+                            let tagName = 'p';
+                            //tags with return default browser behavior
+                            if(['LI', 'ARTICLE', 'P'].includes(Selection.anchorNode.parentElement.tagName)) {
+                                return true;
+                            }
+                            const p = el(tagName, { props: { innerHTML: `&nbsp;` } });
+                            Selection?.anchorNode?.parentElement?.insertAdjacentElement('afterend', p);
+                            const range = document.createRange();
+                            range.selectNodeContents(p);
+                            Selection?.removeAllRanges();
+                            Selection?.addRange(range);
+                            event.stopPropagation();
+                            event.preventDefault();
+                        }
+                    }
+                },
+            });
+
+            //Make action buttons
+            this.#makeActionButtons(this.EditorActionsSection, this.EditorTags);
+            this.#makeActionButtons(this.EditorInlineActionsForm, this.EditorInlineActions);
+            
+            //Inser wc-editor after textarea node
+            this.append(
+                this.EditorActionsSection,
+                this.EditorInlineDialog,
+                this.EditorNode,
+            );
+
             if(this.#HideBottomActions === false) {
                 //Toggler btn text/html
                 this.EditorBottomFormViewToggle = el('button', {
@@ -222,9 +311,9 @@ class WCWYSIWYG extends HTMLElement {
                         type:'button',
                         innerText: 'текст/html5',
                         onpointerup: event => {
-                            let mode = this.EditorBottomFormViewToggle.getAttribute('data-mode');
+                            let mode = this.EditorBottomFormViewToggle?.getAttribute('data-mode');
                             let newMode = mode === 'html5' ? 'text' : 'html5';
-                            this.EditorBottomFormViewToggle.setAttribute('data-mode', newMode);
+                            this.EditorBottomFormViewToggle?.setAttribute('data-mode', newMode);
                             this.EditorNode.style.display = newMode === 'html5' ? '' : 'none';
                             this.EditorPreviewText.classList.toggle('-display-none', newMode === 'html5' ? true : false)
                             if(newMode === 'text') {
@@ -264,102 +353,14 @@ class WCWYSIWYG extends HTMLElement {
                         }
                     }
                 });
-        
-                this.EditorBottomForm.append(
+
+                this.EditorBottomForm?.append(
                     this.EditorBottomFormNewP,
                     this.EditorBottomFormViewToggle,
                     this.EditorFullScreenButton,
                 );
+                this.append(this.EditorBottomForm);
             }
-
-            //Check custom tags
-            this.EditorCustomTags = JSON.parse( String(this.getAttribute('data-custom-tags')) );
-            if(this.EditorCustomTags !== null) {
-                //Custom panel tags 
-                this.EditorCustomTagsForm = el('fieldset', {
-                    classList: ['wc-wysiwyg_ce'],
-                });
-                //Make custom actions buttons panel
-                this.#makeActionButtons(this.EditorCustomTagsForm, this.EditorCustomTags);
-
-                this.appendChild(this.EditorCustomTagsForm);
-            }
-
-            //Node editable
-            this.EditorNode = el('article', {
-                classList: ['wc-wysiwyg_content', this.getAttribute('data-content-class')],
-                props: {
-                    contentEditable: true,
-                    onpointerup: event => {
-                        this.checkCanClearElement(event);
-                        if(this.#EditProps) {
-                            this.checkEditProps(event);
-                        }
-                    },
-                    oninput: event => {
-                        this.updateContent();
-                        if(this.#Autocomplete) {
-                            this.checkAutoComplete();
-                        }
-                    },
-                    //Handle key bindings
-                    onkeydown: event => {
-                        //check hold alt
-                        if(event.altKey) {
-                            //alt+space - move caret to parent node next sibling
-                            if(event.code === 'Space') {
-                                const Selection = window.getSelection();
-                                if(Selection.type === 'Caret') {
-                                    //insertAdjacentElement dont support textNodes, first insert span
-                                    const span = el('span');
-                                    Selection.anchorNode.parentElement.insertAdjacentElement('afterend', span)
-                                    //after replace span with textnode and select it
-                                    const textN = document.createTextNode('&nbsp');
-                                    span.replaceWith(textN);
-                                    const range = document.createRange();
-                                    range.selectNodeContents(textN);
-                                    Selection.removeAllRanges();
-                                    Selection.addRange(range);
-                                }
-                            }
-                        }
-                        //tag - hide editor dialog
-                        if(event.code === 'Escape') {
-                            this.hideEditorInlineDialog();
-                        }
-                        //enter - set p as default tag in newline
-                        if(event.code === 'Enter' && event.shiftKey === false) {
-                            const Selection = window.getSelection();
-                            let tagName = 'p';
-                            //tags with return default browser behavior
-                            if(['LI', 'ARTICLE', 'P'].includes(Selection.anchorNode.parentElement.tagName)) {
-                                return true;
-                            }
-                            const p = el(tagName, { props: { innerHTML: `&nbsp;` } });
-                            Selection.anchorNode.parentElement.insertAdjacentElement('afterend', p);
-                            const range = document.createRange();
-                            range.selectNodeContents(p);
-                            Selection.removeAllRanges();
-                            Selection.addRange(range);
-                            event.stopPropagation();
-                            event.preventDefault();
-                        }
-                    }
-                },
-            });
-
-            //Make action buttons
-            this.#makeActionButtons(this.EditorActionsSection, this.EditorTags);
-            this.#makeActionButtons(this.EditorInlineActionsForm, this.EditorInlineActions);
-            
-            //Inser wc-editor after textarea node
-            this.append(
-                this.EditorActionsSection,
-                this.EditorInlineDialog,
-                this.EditorNode,
-                this.EditorPreviewText,
-                this.EditorBottomForm,
-            );
             this.EditorNode.innerHTML = this.EditorPreviewText.value;
             this.updateContent();
 
@@ -372,6 +373,7 @@ class WCWYSIWYG extends HTMLElement {
      */
     updateContent() {
         this.value = this.EditorNode.innerHTML;
+        this.EditorPreviewText.value = this.value;
         this.checkValidity();
         if(this.#SotrageKey) {
             window.localStorage.setItem(this.#SotrageKey, this.value);
@@ -399,7 +401,7 @@ class WCWYSIWYG extends HTMLElement {
      */
     checkValidity() {
         let hasErros = false,
-            errors= [];
+            errors:string[] = [];
         
         //Check attrs
         if(this.getAttribute('required') !== null) {
@@ -420,8 +422,9 @@ class WCWYSIWYG extends HTMLElement {
                 errors.push(`${this.#t('maxlength')} ${this.getAttribute('maxlength')}`);
             }
         }
-        if(this.getAttribute('filtertags')) {
-            const disallowTags = this.getAttribute('filtertags').split(',');
+        const filterTags = this.getAttribute('filtertags');
+        if(filterTags !== null) {
+            const disallowTags = filterTags.split(',') || [];
             for (let i = 0; i < disallowTags.length; i++) {
                 const checkTag = disallowTags[i];
                 if(this.EditorNode.querySelector(checkTag)) {
@@ -434,7 +437,7 @@ class WCWYSIWYG extends HTMLElement {
         this.EditorNode.classList.toggle('-invalid', hasErros);
         let oldErrors = this.querySelector('.-errors');
         if(oldErrors) {
-            oldErrors.parentElement.removeChild(oldErrors);
+            oldErrors.parentElement?.removeChild(oldErrors);
         }
         if(hasErros) {
             const errosEl = el('p', {
@@ -457,7 +460,7 @@ class WCWYSIWYG extends HTMLElement {
         const Selecton = window.getSelection();
         if(Selecton !== null && Selecton.anchorNode !== null) {
             const SelectionParentEl = Selecton.anchorNode.parentElement as HTMLParagraphElement;
-            
+            const AutoCompleteForm = this.EditorAutoCompleteForm as HTMLElement;
             if(SelectionParentEl !== null && 
                 //if empty selection
                 Selecton.toString() === '' && 
@@ -470,9 +473,9 @@ class WCWYSIWYG extends HTMLElement {
                         const parsedTagName = SelectionParentEl.innerText.replace('/', '');
                         const filteredActions = this.EditorTags.filter(action => action.tag.toLocaleLowerCase().startsWith(parsedTagName.toLocaleLowerCase()));
                         if(filteredActions.length > 0) {
-                            this.EditorAutoCompleteForm.innerHTML = '';
+                            AutoCompleteForm.innerHTML = '';
                             filteredActions.forEach(action => {
-                                this.EditorAutoCompleteForm.appendChild(el('button', {
+                                AutoCompleteForm?.appendChild(el('button', {
                                     classList: ['wc-wysiwyg_btn', `-${action.tag}`],
                                     attrs: {
                                         'data-hint': this.#t(action.tag) || null,
@@ -484,13 +487,13 @@ class WCWYSIWYG extends HTMLElement {
                                     }
                                 }))
                             });
-                            SelectionParentEl.appendChild(this.EditorAutoCompleteForm);
+                            SelectionParentEl.appendChild(AutoCompleteForm);
                         } else {
                             //clear form
-                            this.EditorAutoCompleteForm.innerHTML = '';
+                            AutoCompleteForm.innerHTML = '';
                             //if exist in DOM detach
-                            if(this.EditorAutoCompleteForm.parentElement) {
-                                this.EditorAutoCompleteForm.parentElement.removeChild(this.EditorAutoCompleteForm);
+                            if(AutoCompleteForm.parentElement) {
+                                AutoCompleteForm.parentElement.removeChild(AutoCompleteForm);
                             }
                         }
                     }
@@ -532,7 +535,7 @@ class WCWYSIWYG extends HTMLElement {
                 this.showEditorInlineDialog();
             } else { 
                 this.EditorClearFormatBtn.style.display = 'none';
-                this.EditorClearFormatBtn.onpointerup = undefined;
+                this.EditorClearFormatBtn.onpointerup = null;
             }
         }
     }

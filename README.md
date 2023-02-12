@@ -3,15 +3,12 @@
 WC-WSIWYG HTML5 Editor written in TypeScript and designed by web-componennt, support all JS frameworks and browsers.
 See full demo - [wc-wysiwyg demo](https://webislife.ru/demo/wc-wysiwyg/) list and demo of all editor features
 
-
-## Install
-
-```
-npm i wc-wysiwyg-editor --save
-```
-
 ## Features
 ✅ Multilingual support via [HTMLElement.lang](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/lang) attribute  🇷🇺/🇺🇸 supported by default
+
+✅ 🌐 Support all major browsers
+
+✅ 🚀 Reusable between all major JS frameworks
 
 ✅ CSS styles for all popular HTML5 tags
 
@@ -24,11 +21,12 @@ npm i wc-wysiwyg-editor --save
 ✅ Storing value in `window.localStorage` and restoring after reload, check in comment form below
 
 ✅ Eetting  editable properties of any tags, the number of tags and attributes are configurable
-✅ Autocomplete as you type / for supported tags in new paragraph
 
-✅ Text\HTML5 view switcher
+✅ Autocomplete as you type `/` for supported tags in new paragraph
 
-✅ Size Clear Button `Ⱦ`
+✅ `Text\HTML5` view switcher
+
+✅ Clear format tag button `Ⱦ`
 
 ✅ Live preview
 
@@ -36,11 +34,18 @@ npm i wc-wysiwyg-editor --save
     - `ALT`+`SPACE` toggle the current caret pointer outside the tag
     - `ESCAPE` close bottom editor dialog box
 
-✅ Validation required, minlength, maxlength, filtertags
+✅ Validation `required`, `minlength`, `maxlength`, `filtertags`
 
 ✅ Inserting `<audio>` element
 
 ✅ Inserting `<video>` element
+
+
+## Install
+
+```
+npm i wc-wysiwyg-editor --save
+```
 
 ## Commands
 

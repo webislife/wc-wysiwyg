@@ -1,4 +1,4 @@
-name: wc-wysiwyg-editor package
+name: wc-wysiwyg package
 
 on:
   release:

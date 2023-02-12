@@ -1,8 +1,9 @@
 {
     "name": "@webislife/wc-wysiwyg",
-    "version": "0.9.1",
+    "version": "0.9.2",
     "description": "WYWSIWYG HTML5 Editor written in ts and designed by web-componennt, support all JS frameworks and browsers",
-    "main": "src/wc-wysiwyg.ts",
+    "main": "dist/wc-wysiwyg.js",
+    "type": "module",
     "scripts": {
       "sass": "./node_modules/node-sass/bin/node-sass ./src -o ./dist",
       "tsc": "./node_modules/.bin/tsc",
@@ -16,7 +17,8 @@
     "keywords": [
       "web-component",
       "custom-element",
-      "time",
+      "html5 editor",
+      "wysiwyg",
       "html5",
       "esnext",
       "typescript"

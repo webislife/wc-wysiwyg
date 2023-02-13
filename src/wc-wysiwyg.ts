@@ -133,17 +133,11 @@ class WCWYSIWYG extends HTMLElement {
             this.#EditProps = this.getAttribute('data-edit-props') !== null ? JSON.parse(this.getAttribute('data-edit-props') || '') : false;
             this.#Autocomplete = this.getAttribute('data-autocomplete') === '1';
             this.#HideBottomActions = this.getAttribute('data-hide-bottom-actions') === '1';
+            
             //allow inline without ['video','audio','img']
             this.EditorInlineActions = this.EditorTags.filter(action =>  ['video','audio','img'].includes(action.tag) === false);
 
-            //Check local storage key
-            this.#SotrageKey = this.getAttribute('data-storage');
-            if(this.#SotrageKey) {
-                let storeValue = window.localStorage.getItem(this.#SotrageKey);
-                if(storeValue) {
-                    this.value = storeValue;
-                }
-            }
+            
             this.EditorActionsSection = el('section', { classList: ['wc-wysiwyg_ec'] });
             //Clear format button
             this.EditorClearFormatBtn = el('button', {
@@ -362,6 +356,16 @@ class WCWYSIWYG extends HTMLElement {
                 this.append(this.EditorBottomForm);
             }
             this.EditorNode.innerHTML = this.EditorPreviewText.value;
+            //Check local storage key
+            this.#SotrageKey = this.getAttribute('data-storage');
+            console.log('storage key is ', this.#SotrageKey);
+            if(this.#SotrageKey) {
+                let storeValue = window.localStorage.getItem(this.#SotrageKey);
+                console.log('restore from storage', storeValue);
+                if(storeValue) {
+                    this.EditorNode.innerHTML = storeValue;
+                }
+            }
             this.updateContent();
 
             this.#Connected = true;

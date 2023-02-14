@@ -43,6 +43,7 @@ export const t = {
         minlength: 'Min length is:',
         maxlength: 'Max length is:',
         filtertags: 'Found filter tag:',
+        details: 'Spoiler block',
     },
     ru: {
         h1:'Заголовок 1 уровня',
@@ -60,7 +61,7 @@ export const t = {
         b:'Жирный',
         i:'Курсив',
         u:'Подчеркнутый',
-        s:'Маленький',
+        s:'Перечеркнутый',
         sup:'Надстрочный',
         sub:'Подстрочный',
         kbd:'Кнопка',
@@ -87,5 +88,6 @@ export const t = {
         minlength: 'Минимальная длинна:',
         maxlength: 'Максимальная длинна:',
         filtertags: 'Найден запрещенный тег:',
+        details: 'Блок спойлера',
     }
 };

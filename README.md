@@ -77,9 +77,12 @@ npm run build
 </wc-wysiwyg>
 ```
 -->
-First, include JS and define custom element
+First need integrate wc-wysiwyg styles, you have 2 way, vanila css in `dist/sass` or scss in `src/sass` just include in your web project
+
+Second, include JS and define custom element
 ```javascript
 import('/src/components/wc-wysiwyg.js').then(esm => {
+    //you can pass any name into define fn
     esm.define();
 });
 ```

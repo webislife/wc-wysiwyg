@@ -50,6 +50,7 @@ const allTags = [
     { tag: 'audio'},
     { tag: 'video'},
     { tag: 'blockquote'},
+    { tag: 'details'},
 ] as WCWYSIWYGTag[];
 
 class WCWYSIWYG extends HTMLElement {
@@ -136,7 +137,6 @@ class WCWYSIWYG extends HTMLElement {
             
             //allow inline without ['video','audio','img']
             this.EditorInlineActions = this.EditorTags.filter(action =>  ['video','audio','img'].includes(action.tag) === false);
-
             
             this.EditorActionsSection = el('section', { classList: ['wc-wysiwyg_ec'] });
             //Clear format button
@@ -202,9 +202,7 @@ class WCWYSIWYG extends HTMLElement {
             }
             
             //Actions in footer
-            this.EditorBottomForm = el('fieldset', {
-                classList: ['wc-wysiwyg_bt'],
-            });
+            this.EditorBottomForm = el('fieldset', { classList: ['wc-wysiwyg_bt'] });
             
             //Check custom tags
             this.EditorCustomTags = JSON.parse( String(this.getAttribute('data-custom-tags')) );
@@ -224,60 +222,23 @@ class WCWYSIWYG extends HTMLElement {
                 classList: ['wc-wysiwyg_content', this.getAttribute('data-content-class') || ''],
                 props: {
                     contentEditable: true,
+                    //Pointer event behaviors
                     onpointerup: event => {
-                        this.checkCanClearElement(event);
+                        this.#checkCanClearElement(event);
                         if(this.#EditProps) {
-                            this.checkEditProps(event);
+                            this.#checkEditProps(event);
                         }
                     },
+                    //Update content on input event
                     oninput: event => {
                         this.updateContent();
                         if(this.#Autocomplete) {
-                            this.checkAutoComplete();
+                            this.#checkAutoComplete();
                         }
                     },
-                    //Handle key bindings
+                    //Check hot keys is pressed
                     onkeydown: event => {
-                        //check hold alt
-                        if(event.altKey) {
-                            //alt+space - move caret to parent node next sibling
-                            if(event.code === 'Space') {
-                                const Selection = window.getSelection();
-                                if(Selection?.type === 'Caret') {
-                                    //insertAdjacentElement dont support textNodes, first insert span
-                                    const span = el('span');
-                                    Selection?.anchorNode?.parentElement?.insertAdjacentElement('afterend', span)
-                                    //after replace span with textnode and select it
-                                    const textN = document.createTextNode('&nbsp');
-                                    span.replaceWith(textN);
-                                    const range = document.createRange();
-                                    range.selectNodeContents(textN);
-                                    Selection.removeAllRanges();
-                                    Selection.addRange(range);
-                                }
-                            }
-                        }
-                        //tag - hide editor dialog
-                        if(event.code === 'Escape') {
-                            this.hideEditorInlineDialog();
-                        }
-                        //enter - set p as default tag in newline
-                        if(event.code === 'Enter' && event.shiftKey === false) {
-                            const Selection = window.getSelection();
-                            let tagName = 'p';
-                            //tags with return default browser behavior
-                            if(['LI', 'ARTICLE', 'P'].includes(Selection.anchorNode.parentElement.tagName)) {
-                                return true;
-                            }
-                            const p = el(tagName, { props: { innerHTML: `&nbsp;` } });
-                            Selection?.anchorNode?.parentElement?.insertAdjacentElement('afterend', p);
-                            const range = document.createRange();
-                            range.selectNodeContents(p);
-                            Selection?.removeAllRanges();
-                            Selection?.addRange(range);
-                            event.stopPropagation();
-                            event.preventDefault();
-                        }
+                        this.#checkKeyBindings(event)
                     }
                 },
             });
@@ -459,7 +420,7 @@ class WCWYSIWYG extends HTMLElement {
     /**
      * Check if need append autocompleted tags variants
      */
-    checkAutoComplete() {
+    #checkAutoComplete() {
         //CHeck autococmplete 
         const Selecton = window.getSelection();
         if(Selecton !== null && Selecton.anchorNode !== null) {
@@ -523,10 +484,10 @@ class WCWYSIWYG extends HTMLElement {
     }
     
     /**
-     * Checking and clear tag, if can do it
+     * Checking clear form and clear, if can do it
      * @param event 
      */
-    checkCanClearElement(event:Event) {
+    #checkCanClearElement(event:Event) {
         const eventTarget = event.target as HTMLElement;
         if(eventTarget !== this.EditorNode) {
             if(eventTarget.nodeName !== 'P' 
@@ -547,8 +508,7 @@ class WCWYSIWYG extends HTMLElement {
     /**
      * Checking click tag for editable props
      **/
-    checkEditProps(event) {
-        //Check need edit props
+    #checkEditProps(event) {
         const eventTarget = event.target as HTMLElement;
         
         //Check exist prop\attr
@@ -598,7 +558,59 @@ class WCWYSIWYG extends HTMLElement {
         }
     }
 
-    #makeActionButtons(toEl:HTMLElement, actions) {
+    /**
+     * Cheking hot keys when keydown pressed
+     * @param event Keyboard event
+     */
+    #checkKeyBindings(event:KeyboardEvent) {
+        //check hold alt
+        if(event.altKey) {
+            //alt+space - move caret to parent node next sibling
+            if(event.code === 'Space') {
+                const Selection = window.getSelection();
+                if(Selection?.type === 'Caret') {
+                    //insertAdjacentElement dont support textNodes, first insert span
+                    const span = el('span');
+                    Selection?.anchorNode?.parentElement?.insertAdjacentElement('afterend', span)
+                    //after replace span with textnode and select it
+                    const textN = document.createTextNode('&nbsp');
+                    span.replaceWith(textN);
+                    const range = document.createRange();
+                    range.selectNodeContents(textN);
+                    Selection.removeAllRanges();
+                    Selection.addRange(range);
+                }
+            }
+        }
+        //tag - hide editor dialog
+        if(event.code === 'Escape') {
+            this.hideEditorInlineDialog();
+        }
+        //enter - set p as default tag in newline
+        if(event.code === 'Enter' && event.shiftKey === false) {
+            const Selection = window.getSelection();
+            let tagName = 'p';
+            //tags with return default browser behavior
+            if(['LI', 'ARTICLE', 'P'].includes(Selection.anchorNode.parentElement.tagName)) {
+                return false;
+            }
+            const p = el(tagName, { props: { innerHTML: `&nbsp;` } });
+            Selection?.anchorNode?.parentElement?.insertAdjacentElement('afterend', p);
+            const range = document.createRange();
+            range.selectNodeContents(p);
+            Selection?.removeAllRanges();
+            Selection?.addRange(range);
+            event.stopPropagation();
+            event.preventDefault();
+        }
+    }
+
+    /**
+     * Make buttons and bind actions
+     * @param toEl htmlelement where append el
+     * @param actions 
+     */
+    #makeActionButtons(toEl:HTMLElement, actions:WCWYSIWYGTag[]) {
         for (let i = 0; i < actions.length; i++) {
             const action = actions[i];
             const button = el('button', {
@@ -607,14 +619,15 @@ class WCWYSIWYG extends HTMLElement {
                     tabIndex: -1,
                     type:'button',
                     textContent: action.is ? `${action.tag} is=${action.is}` : action.tag,
-                    onpointerup: (event) => this.#tag(action.tag, event, action.is),
+                    onpointerup: (event) => {
+                        event.stopPropagation();
+                        this.#tag(action)
+                    },
                 },
                 attrs: {
                     'data-hint': action.hint ? action.hint : this.#t(action.tag) || '-',
                 }
             });
-            //-wc
-            //Make button with 
             toEl.appendChild(button);
         }
     }
@@ -623,44 +636,66 @@ class WCWYSIWYG extends HTMLElement {
     /**
      * Default behaviors fot tag actions
      */
-     #tag = (tag:string, event:Event|false = false, is:boolean|string = false) => {
-        switch (tag) {
+    #tag = (tag:WCWYSIWYGTag) => {
+        switch (tag.tag) {
             case 'audio':
                 this.#Media('audio');
                 break;
             case 'video':
                 this.#Media('video');
                 break;
+            case 'details':
+                this.#Details();
+                break;
             case 'img':
                 this.#Image();
                 break;
             default:
-                this.#wrapTag(tag, is);
+                if(typeof tag.method === 'function') {
+                    tag.method.apply(this, tag);
+                } else {
+                    this.#wrapTag(tag, tag.is);
+                }
                 break;
         }
+    }
+
+     /**
+     * Insert spoiler
+     **/
+    #Details() {
+        const summaryTitle = prompt('Title', '');
+        if(summaryTitle === '') {
+            return false;
+        }
+        const mediaEl = el('details', { 
+            append: [
+                el('summary', { props: {innerText: summaryTitle} }), 
+                el('p', { props: {innerText: '...'} })] } 
+            );
+        this.EditorNode.append(mediaEl);
+        this.updateContent();
     }
 
     /**
      * Wrap content in <tag>
      **/
     #wrapTag = (tag, is:boolean|string = false) => {
-        const isList = ['ul', 'ol'].includes(tag);
+        const listTag = ['ul', 'ol'].includes(tag) ? tag : false;
+        tag = listTag !== false ? 'li' : tag;
         const Selection = window.getSelection();
         let className = null;
         let defaultOptions = {
             classList: className ? className : undefined,
         } as any;
-        if(isList) {
-            tag = 'li';
-        }
         if(is) {
             defaultOptions.options = {is};
         }
         let tagNode = el(tag, defaultOptions);
         
         if (Selection !== null && Selection.rangeCount) {
-            if(['ul', 'ol'].includes(tag)) {
-                const list = el(tag);
+            if(listTag !== false) {
+                const list = el(listTag);
                 tagNode.replaceWith(list);
                 list.append(tagNode)
             }
@@ -668,6 +703,7 @@ class WCWYSIWYG extends HTMLElement {
             range.surroundContents(tagNode);
             Selection.removeAllRanges();
             Selection.addRange(range);
+            //If selection has text, insert it
             if(Selection.toString().length === 0) {
                 tagNode.innerText = tag;
             }
@@ -703,15 +739,16 @@ class WCWYSIWYG extends HTMLElement {
         }
         
         if(caption) {
-            const figure = el('figure');
-            
-            const figcaption = el('figcaption', {
-                props: {
-                    textContent: caption
-                }
+            const figure = el('figure', {
+                append: [
+                    img,
+                    el('figcaption', {
+                        props: {
+                            textContent: caption
+                        }
+                    })
+                ]
             });
-            figure.appendChild(img);
-            figure.appendChild(figcaption);
 
             img.setAttribute('alt', caption);
             this.EditorNode.appendChild(figure);

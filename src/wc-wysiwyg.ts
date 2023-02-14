@@ -680,18 +680,15 @@ class WCWYSIWYG extends HTMLElement {
     /**
      * Wrap content in <tag>
      **/
-    #wrapTag = (tag, is:boolean|string = false) => {
-        const listTag = ['ul', 'ol'].includes(tag) ? tag : false;
-        tag = listTag !== false ? 'li' : tag;
+    #wrapTag = (tag:WCWYSIWYGTag, is:boolean|string = false) => {
+        const listTag = ['ul', 'ol'].includes(tag.tag) ? tag.tag : false;
+        const newtag = listTag !== false ? 'li' : tag.tag;
         const Selection = window.getSelection();
-        let className = null;
-        let defaultOptions = {
-            classList: className ? className : undefined,
-        } as any;
+        let defaultOptions = {} as any;
         if(is) {
             defaultOptions.options = {is};
         }
-        let tagNode = el(tag, defaultOptions);
+        let tagNode = el(newtag, defaultOptions);
         
         if (Selection !== null && Selection.rangeCount) {
             if(listTag !== false) {

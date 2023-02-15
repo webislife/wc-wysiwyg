@@ -1,5 +1,5 @@
 /**
- * Short
+ * Short for document.createElement
  * @param tagName element tag name
  * @param params list of object params for document.createElements
  * @returns 
@@ -27,11 +27,7 @@
     }
     // element.style[prop]
     if(styles) {
-        const stylesKeys = Object.keys(styles);
-        for (let i = 0; i < stylesKeys.length; i++) {
-            const key = stylesKeys[i];
-            element.style[key] = styles[key];
-        }
+        Object.assign(element.style, styles);
     }
     // element[prop]
     if(props) {
@@ -51,11 +47,9 @@
             }
         }
     }
-    if(append) {
-        for (let i = 0; i < append.length; i++) {
-            const appendEl = append[i];
-            element.append(appendEl);
-        }
+    //append child elements
+    if(append.length) {
+        element.append(...append);
     }
     return element;
 };

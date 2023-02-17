@@ -2,7 +2,7 @@
  * Short for document.createElement
  * @param tagName element tag name
  * @param params list of object params for document.createElements
- * @returns 
+ * @returns HTMLElement\CustomElement
  */
  export const el = (tagName:keyof HTMLElementTagNameMap|string, {classList, styles, props, attrs, options, append}:{
     classList?: string[],
@@ -21,8 +21,9 @@
     // element.classList
     if(classList) {
         for (let i = 0; i < classList.length; i++) {
-            const styleClass = classList[i];
-            element.classList.add(styleClass)
+            if(classList[i]){
+                element.classList.add(classList[i]);
+            }
         }
     }
     // element.style[prop]
@@ -48,8 +49,9 @@
         }
     }
     //append child elements
-    if(append.length) {
+    if(append) {
         element.append(...append);
     }
+    
     return element;
 };

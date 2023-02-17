@@ -75,19 +75,10 @@ h5 {
 h6 {
   font-size: 1em; }
 
-/* h1[id]::before,
-h2[id]::before,
-h3[id]::before,
-h4[id]::before,
-h5[id]::before,
-h6[id]::before {
-    content: '§';
-    color: var(--color-blue-gray-300);
-    margin-right: 0.5em;
-} */
 /* del\ins */
 del {
   color: var(--color-red-900);
+  border-bottom: 1px solid var(--color-red-900);
   background-color: var(--color-red-50);
   text-decoration: none; }
 
@@ -104,6 +95,7 @@ del:before {
 
 ins {
   color: var(--color-green-900);
+  border-bottom: 1px solid var(--color-green-900);
   background-color: var(--color-green-50);
   text-decoration: none; }
 

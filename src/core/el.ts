@@ -2,7 +2,7 @@
  * Short for document.createElement
  * @param tagName element tag name
  * @param params list of object params for document.createElements
- * @returns HTMLElement\CustomElement
+ * @returns HTML\CUSTOMElement
  */
  export const el = (tagName:keyof HTMLElementTagNameMap|string, {classList, styles, props, attrs, options, append}:{
     classList?: string[],

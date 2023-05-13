@@ -40,6 +40,10 @@ See full demo - [wc-wysiwyg demo](https://webislife.ru/demo/wc-wysiwyg/) list an
 
 ✅ Inserting `<video>` element
 
+- ✅ Suppoer extensions
+    - Color text and background editor
+    -  Emoji table
+
 
 ## Install
 

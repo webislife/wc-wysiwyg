@@ -1,6 +1,6 @@
 {
     "name": "@webislife/wc-wysiwyg",
-    "version": "0.9.34",
+    "version": "1.0.1",
     "description": "WYWSIWYG HTML5 Editor written in ts and designed by web-componennt, support all JS frameworks and browsers",
     "main": "dist/wc-wysiwyg.js",
     "type": "module",

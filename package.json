@@ -1,41 +1,43 @@
 {
     "name": "@webislife/wc-wysiwyg",
-    "version": "1.0.1",
+    "version": "1.0.4",
     "description": "WYWSIWYG HTML5 Editor written in ts and designed by web-componennt, support all JS frameworks and browsers",
     "main": "dist/wc-wysiwyg.js",
     "type": "module",
     "scripts": {
-      "sass": "./node_modules/node-sass/bin/node-sass ./src -o ./dist",
-      "tsc": "./node_modules/.bin/tsc",
-      "babel-minify": " ./node_modules/.bin/minify ./dist --mangle=false --out-dir ./dist --sourceType=module",
-      "build": "npm run sass && npm run tsc && npm run babel-minify"
+        "vite": "./node_modules/vite/bin/vite.js",
+        "sass": "./node_modules/node-sass/bin/node-sass ./src -o ./dist",
+        "tsc": "./node_modules/.bin/tsc",
+        "babel-minify": " ./node_modules/.bin/minify ./dist --mangle=false --out-dir ./dist --sourceType=module",
+        "build": "npm run sass && npm run tsc && npm run babel-minify"
     },
     "repository": {
-      "type": "git",
-      "url": "git+https://github.com/webislife/wc-wysiwyg.git"
+        "type": "git",
+        "url": "git+https://github.com/webislife/wc-wysiwyg.git"
     },
     "keywords": [
-      "web-component",
-      "custom-element",
-      "html5 editor",
-      "wysiwyg",
-      "html5",
-      "esnext",
-      "typescript"
+        "web-component",
+        "custom-element",
+        "html5 editor",
+        "wysiwyg",
+        "html5",
+        "esnext",
+        "typescript"
     ],
     "author": "srokoff",
     "license": "MIT",
     "bugs": {
-      "url": "https://github.com/webislife/wc-wysiwyg/issues"
+        "url": "https://github.com/webislife/wc-wysiwyg/issues"
     },
     "homepage": "https://github.com/webislife/wc-wysiwyg#readme",
     "devDependencies": {
-      "babel-minify": "^0.5.2",
-      "node-sass": "^8.0.0",
-      "typescript": "^4.9.4"
+        "babel-minify": "^0.5.2",
+        "node-sass": "^8.0.0",
+        "sass": "^1.62.1",
+        "typescript": "^4.9.4",
+        "vite": "^4.3.9"
     },
     "publishConfig": {
-      "@webislife:registry": "https://npm.pkg.github.com"
+        "@webislife:registry": "https://npm.pkg.github.com"
     }
-  }
-  
+}

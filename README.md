@@ -44,6 +44,7 @@ See full demo - [wc-wysiwyg demo](https://webislife.ru/demo/wc-wysiwyg/) list an
     - Color text and background editor
     -  Emoji table
 
+🚀 Vite support for wc-wysiwyg develop 
 
 ## Install
 
@@ -55,7 +56,7 @@ npm i wc-wysiwyg-editor --save
 
 - Available package commands
 
-    Build scss styles
+- Build scss styles
 ```
 npm run sass
 ```
@@ -67,11 +68,12 @@ npm run tsc
 ```
 npm run babel-minify
 ```
-build all stpes 1.sass 2.tsc 3.babel-minif
+- build all stpes 1.sass 2.tsc 3.babel-minif
 
 ```
 npm run build
 ```
+- start vite serve mode for wc-wysiwyg development
 
 ## Integration WC-WYSIWYG element demo
 <!--
@@ -89,6 +91,18 @@ import('/src/components/wc-wysiwyg.js').then(esm => {
     //you can pass any name into define fn
     esm.define();
 });
+```
+
+For use extensions, load before wc-wysiwig
+```javascript
+Promise.all([
+    import('./src/extensions/colorerDialog.ts'),
+    import('./src/extensions/emojiDialog.ts'),
+    import('./src/extensions/presetList.ts'),
+]).then(modules => {
+    import('./src/wc-wysiwyg.ts').then(esm => esm.define());
+});
+
 ```
 And use in HTML
 

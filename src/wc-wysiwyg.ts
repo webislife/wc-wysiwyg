@@ -1,7 +1,5 @@
 import { t } from './core/translates.js';
 import { el } from "./core/el.js";
-import test from './extensions/colorerDialog.js';
-import test2 from './extensions/presetList.js';
 /**
  * Translate function
  * @param key:string phrase key
@@ -74,8 +72,6 @@ class WCWYSIWYG extends HTMLElement {
     public EditorCustomTagsForm?:HTMLElement
     //Inline edites
     public EditorInlineActions:any[]
-    public EditorInlineDialog:HTMLDialogElement
-    public EditorInlineActionsForm:HTMLElement
     //Editor props
     public EditorPropertyForm?:HTMLElement
     //Clear btn
@@ -113,13 +109,9 @@ class WCWYSIWYG extends HTMLElement {
             const editorSelection = this.getSelection();
             //if check exist selection string
             if(editorSelection.selection !== null && editorSelection.selection.text !== null) {
-                this.EditorInlineActionsForm.style.display = '';
                 if(this.EditorPropertyForm){
                     this.EditorPropertyForm.style.display = 'none';
                 }
-                this.showEditorInlineDialog();
-            } else {
-                this.hideEditorInlineDialog();
             }
         };
         this.onfullscreenchange = (event) => {
@@ -133,10 +125,8 @@ class WCWYSIWYG extends HTMLElement {
             const asyncExtensions = this.getAttribute('data-async-extensions') || false;
             if(asyncExtensions !== false) {
                 const asyncExtensionsPaths = asyncExtensions.split(',');
-                console.log('need load', asyncExtensionsPaths);
                 asyncExtensionsPaths.forEach((extensionPath:string) => {
                     import(extensionPath).then(esm => {
-                        console.log('asyncExtensionsPaths loaded', esm);
                         const Extension = new esm.default(this);
                         if(typeof Extension.connectedCallback === 'function') {
                             Extension.connectedCallback();
@@ -187,23 +177,6 @@ class WCWYSIWYG extends HTMLElement {
             });
             this.#makeActionButtons(this.EditorActionsSection, this.EditorTags);
             this.EditorActionsSection.append(this.EditorClearFormatBtn);
-
-            //Inline selection actions panel
-            // this.EditorInlineActionsForm = el('form');
-            // this.EditorInlineDialog = el('dialog', {
-            //     classList: ['wc-wysiwyg_di'],
-            //     append: [this.EditorInlineActionsForm],
-            //     props: {
-            //         //prevent submit
-            //         onsubmit: event => {
-            //             event.preventDefault();
-            //             event.stopPropagation();
-            //         },
-            //     },
-            //     attrs: {
-            //         tabIndex: -1,
-            //     }
-            // });
 
             //Edit props
             if(this.#EditProps) {
@@ -528,33 +501,6 @@ class WCWYSIWYG extends HTMLElement {
                 }
         }
     }
-
-    /**
-     * Show and position inline actions dialog at targetNode
-     **/
-    showEditorInlineDialog() {
-        //Save selection range
-        const editorSelection = this.getSelection();
-        if(editorSelection.selection !== null) {
-            const range = editorSelection.selection.getRangeAt(0).cloneRange();
-            this.EditorInlineDialog.show();
-            //Restore selection range after dialog show
-            editorSelection.selection.removeAllRanges();
-            editorSelection.selection.addRange(range);
-        } else {
-            this.EditorInlineDialog.show();
-        }
-    }
-
-    /**
-     * Hide inline dialog
-     **/
-    hideEditorInlineDialog() {
-        if(this.#EditProps){
-            this.EditorPropertyForm.style.display = 'none';
-        }
-        this.EditorInlineDialog.close();
-    }
     
     /**
      * Checking clear form and clear, if can do it
@@ -571,7 +517,6 @@ class WCWYSIWYG extends HTMLElement {
                 clearBtn.onpointerup = (event) => {
                     eventTarget.replaceWith(document.createTextNode(eventTarget.textContent));
                 };
-                this.showEditorInlineDialog();
             } else { 
                 clearBtn.style.display = 'none';
                 clearBtn.onpointerup = null;
@@ -662,10 +607,6 @@ class WCWYSIWYG extends HTMLElement {
                 }
             }
         }
-        //tag - hide editor dialog
-        if(event.code === 'Escape') {
-            this.hideEditorInlineDialog();
-        }
         //enter - set p as default tag in newline
         if(event.code === 'Enter' && event.shiftKey === false) {
             const Selection = this.getSelection().selection;
@@ -711,7 +652,6 @@ class WCWYSIWYG extends HTMLElement {
             toEl.appendChild(button);
         }
     }
-
 
     /**
      * Default behaviors fot tag actions
@@ -845,7 +785,6 @@ class WCWYSIWYG extends HTMLElement {
      #checkExtensions() {
         // Check extensions in global
         const _WCWYSIWYG = window._WCWYSIWYG;
-        console.log('#checkExtensions',_WCWYSIWYG);
         if(_WCWYSIWYG !== undefined && _WCWYSIWYG.extensions.length > 0) {
             this.#Extensions = [];
             for (let i = 0; i < _WCWYSIWYG.extensions.length; i++) {
@@ -876,9 +815,6 @@ class WCWYSIWYG extends HTMLElement {
                 editorSelection.text = selectionText;
             }
         }
-
-        console.log('wc selection', editorSelection);
-
         return editorSelection;
     }
     //define WCWYSIWYG as custom element

@@ -9,5 +9,6 @@
       "declarationMap": false,
       "target": "ESNEXT",
       "removeComments": true,
+      "rootDir": "./src",
     }
   }

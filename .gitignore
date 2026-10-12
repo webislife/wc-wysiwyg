@@ -1,2 +1,6 @@
 /node_modules
-package-lock.json
+/dist
+/.vite
+coverage/
+*.log
+.DS_Store

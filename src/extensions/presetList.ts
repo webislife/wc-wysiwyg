@@ -1,114 +1,142 @@
 import { el } from '../core/el.js';
+import { createTranslator } from '../core/i18n.js';
+import { registerExtension } from '../core/extensions.js';
+import { safeJsonParse } from '../core/storage.js';
+import type WCWYSIWYG from '../wc-wysiwyg.js';
 
-/**
- * Presets format
- */
-interface WCWYSIWYGPreset {
-    /**
-     * Preset name on drop down
-     */
-    name:string,
-    /**
-     * tag name
-     */
-    tag:string,
-    /**
-     * will set to HTMLElement.className property
-     */
-    class?:string,
-    /**
-     * will set to HTMLElement.style property
-     */
-    style?:string
+const t = {
+  ru: { presets: 'Оформление', close: 'Закрыть' },
+  en: { presets: 'Presets', close: 'Close' },
+};
+const _t = createTranslator(t);
+
+/** Preset format. */
+export interface WCWYSIWYGPreset {
+  /** Preset name shown in the dropdown (rendered as text, never HTML). */
+  name: string;
+  /** Tag name to wrap the selection with. */
+  tag: string;
+  /** Set as `className`. */
+  class?: string;
+  /** Set as inline style. */
+  style?: string;
 }
+
+function isPreset(value: unknown): value is WCWYSIWYGPreset {
+  if (typeof value !== 'object' || value === null) return false;
+  const preset = value as Record<string, unknown>;
+  return typeof preset.name === 'string' && typeof preset.tag === 'string' && /^[a-z][a-z0-9-]*$/i.test(preset.tag);
+}
+
 class WCWYSIWYGExtensionPresetList {
-    PresetList: HTMLElement|null = null
-    PresetBtn:HTMLElement
-    Presets: Array<WCWYSIWYGPreset> = []
-    WCWYSIWYG:any
-    constructor(WCWYSIWYG:any) {
-        this.WCWYSIWYG = WCWYSIWYG;
-        this.Presets = JSON.parse(WCWYSIWYG.getAttribute('data-preset-list'));
-        this.PresetBtn = el('button', {
-            classList: ['wc-wysiwyg_btn'],
-            props: {
-                innerHTML: 'Оформление',
-                onpointerup: () => this.#showPresetList(),
-            },
-        });
-    }
-    connectedCallback() {    
-        if(this.Presets !== null) {
-            this.WCWYSIWYG.EditorActionsSection.append(this.PresetBtn);
-        }   
-    }
-    #showPresetList() {
-        console.log('show dialog');
-        if(this.PresetList === null) {
-            const section = el("section", { });
-            //Make presets blocks
-            this.Presets.forEach(preset => {
-                const presetEl = el(preset.tag, {
-                    props: {
-                        innerHTML: `${preset.name}`,
-                        className: preset.class || null,
-                        style: preset.style || null,
-                    }
-                });
-                section.append(el('button', {
-                    props: {
-                        type: 'button',
-                        style: "cursor:pointer;border: 1px solid rgba(0,0,0,0.5); margin-bottom:5px; border-radius:5px; background: transparent; display:block;",
-                        onclick: e => this.#makePreset(preset),
-                    },
-                    append: [presetEl],
-                }));
-            });
+  PresetList: HTMLElement | null = null;
+  PresetBtn: HTMLElement;
+  Presets: WCWYSIWYGPreset[] = [];
+  WCWYSIWYG: WCWYSIWYG;
+  constructor(WCWYSIWYG: WCWYSIWYG) {
+    this.WCWYSIWYG = WCWYSIWYG;
+    const raw = WCWYSIWYG.getAttribute('data-preset-list');
+    const parsed = safeJsonParse<unknown>(raw, []);
+    if (Array.isArray(parsed)) this.Presets = parsed.filter(isPreset);
+    this.PresetBtn = el('button', {
+      classList: ['wc-wysiwyg_btn'],
+      props: { type: 'button', textContent: _t('presets') },
+      attrs: { 'aria-label': _t('presets') },
+      events: { click: () => this.#showPresetList() },
+    });
+  }
 
-            //Close dialog button
-            this.PresetList = el('div', {
-                // classList: ['wc-wysiwyg_ec'],
-                append: [
-                    section,
-                    el('button', {
-                        classList: ['wc-wysiwyg_btn'],
-                        props: {
-                            type: 'button',
-                            innerText: 'Закрыть',
-                            onclick: event => this.PresetList.style.display = 'none'
-                        }
-                    })
-                ]
-            });
-            // this.WCWYSIWYG.EditorActionsSection.append(this.PresetList);
-            this.WCWYSIWYG.EditorActionsSection.insertAdjacentElement('beforeend', this.PresetList);
-            // this.PresetBtn.append(this.PresetList);
-        }
-        // this.PresetList.show();
-        this.PresetList.style.display = 'block';
+  connectedCallback(): void {
+    const section = (this.WCWYSIWYG as unknown as { EditorActionsSection?: HTMLElement | null }).EditorActionsSection;
+    if (this.Presets.length > 0 && section) section.append(this.PresetBtn);
+  }
+
+  disconnectedCallback(): void {
+    this.PresetList?.remove();
+    this.PresetList = null;
+  }
+
+  #showPresetList(): void {
+    const editor = this.WCWYSIWYG as unknown as {
+      EditorActionsSection?: HTMLElement | null;
+      getSelection?: () => { selection: Selection | null; text: string | null };
+      updateContent?: () => void;
+    };
+    if (!editor.EditorActionsSection) return;
+    if (this.PresetList === null) {
+      const section = el('section', {});
+      for (const preset of this.Presets) {
+        // `name` is user-controlled (attribute JSON) — use textContent, never innerHTML.
+        const presetEl = el(preset.tag, { props: { textContent: preset.name } });
+        if (preset.class) presetEl.className = preset.class;
+        if (preset.style) presetEl.style.cssText = preset.style;
+        section.append(
+          el('button', {
+            props: { type: 'button' },
+            styles: {
+              cursor: 'pointer',
+              border: '1px solid rgba(0,0,0,0.5)',
+              marginBottom: '5px',
+              borderRadius: '5px',
+              background: 'transparent',
+              display: 'block',
+            } as Partial<CSSStyleDeclaration>,
+            attrs: { 'aria-label': preset.name },
+            events: { click: () => this.#makePreset(preset) },
+            append: [presetEl],
+          }),
+        );
+      }
+      this.PresetList = el('div', {
+        append: [
+          section,
+          el('button', {
+            classList: ['wc-wysiwyg_btn'],
+            props: { type: 'button', textContent: _t('close') },
+            events: {
+              click: () => {
+                if (this.PresetList) this.PresetList.style.display = 'none';
+              },
+            },
+          }),
+        ],
+      });
+      editor.EditorActionsSection.insertAdjacentElement('beforeend', this.PresetList);
     }
-    #makePreset(preset:WCWYSIWYGPreset) {
-        const editorSelection = this.WCWYSIWYG.getSelection();
-        
-        console.log('make preset', preset, editorSelection);
-        let tagNode = el(preset.tag, {});
-        if(preset.style) {
-            tagNode.setAttribute('style', preset.style);
-        }
-        if(preset.class) {
-            tagNode.className = preset.class;
-        }
-        if (editorSelection.selection !== null && editorSelection.selection.rangeCount && editorSelection.text !== null) {
-            const range = editorSelection.selection.getRangeAt(0).cloneRange();
-            range.surroundContents(tagNode);
-            editorSelection.selection.removeAllRanges();
-            editorSelection.selection.addRange(range);
-            tagNode.innerText = editorSelection.text;
-            this.WCWYSIWYG.updateContent();
-            // this.WCWYSIWY.#checkEditProps({target:tagNode, stopPropagation: () => false});
-        }
+    this.PresetList.style.display = 'block';
+  }
+
+  #makePreset(preset: WCWYSIWYGPreset): void {
+    const editor = this.WCWYSIWYG as unknown as {
+      getSelection?: () => { selection: Selection | null; text: string | null };
+      updateContent?: () => void;
+    };
+    const editorSelection = editor.getSelection?.();
+    if (!editorSelection?.selection || editorSelection.selection.rangeCount === 0 || editorSelection.text === null) {
+      return;
     }
+    // Put the selected text INSIDE the new node first, then wrap —
+    // the old order (surround, then overwrite innerText) destroyed the wrapper.
+    const tagNode = el(preset.tag, { props: { textContent: editorSelection.text } });
+    if (preset.style) tagNode.style.cssText = preset.style;
+    if (preset.class) tagNode.className = preset.class;
+    try {
+      const range = editorSelection.selection.getRangeAt(0).cloneRange();
+      try {
+        range.surroundContents(tagNode);
+      } catch {
+        tagNode.appendChild(range.extractContents());
+        range.insertNode(tagNode);
+      }
+      editorSelection.selection.removeAllRanges();
+      editorSelection.selection.addRange(range);
+      editor.updateContent?.();
+    } catch {
+      /* invalid selection state — leave content untouched */
+    }
+  }
 }
-//Put extension in global view
-(window._WCWYSIWYG !== undefined) ? window._WCWYSIWYG.extensions.push(WCWYSIWYGExtensionPresetList) : window._WCWYSIWYG = {extensions:[WCWYSIWYGExtensionPresetList]};
+
+registerExtension(WCWYSIWYGExtensionPresetList as unknown as import('../core/extensions.js').ExtensionCtor);
+
 export default WCWYSIWYGExtensionPresetList;

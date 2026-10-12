@@ -1,0 +1,35 @@
+---
+name: Bug report
+description: Report a crash, broken behavior, or security issue
+labels: [bug]
+body:
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Minimal HTML/attributes to reproduce (e.g. data-edit-props value, browser version)
+      placeholder: |
+        <wc-wysiwyg data-edit-props="..."><textarea>...</textarea></wc-wysiwyg>
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happens (error text from console, broken DOM, XSS payload effect)?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: npm version or git SHA you tested
+    validations:
+      required: false

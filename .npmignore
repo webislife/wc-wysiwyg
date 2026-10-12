@@ -1,1 +1,5 @@
 /.github
+/src
+/*.html
+/vite.config.*
+/tsconfig.json

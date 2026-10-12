@@ -1,5 +1,14 @@
 import { t } from './core/translates.js';
-import { el } from "./core/el.js";
+import { el } from './core/el.js';
+import { createTranslator, resolveLang } from './core/i18n.js';
+import { sanitizeHTML, parseTagList } from './core/sanitize.js';
+import { safeStorageGet, safeStorageSet } from './core/storage.js';
+import { safeJsonParse } from './core/storage.js';
+import { drainExtensions } from './core/extensions.js';
+import type { ExtensionCtor } from './core/extensions.js';
+
+import './sass/wc-wysiwyg.scss';
+import './sass/content.scss';
 
 interface Extension {
   connectedCallback?(editor: WCWYSIWYG): void;
@@ -7,15 +16,13 @@ interface Extension {
   [key: string]: unknown;
 }
 
-/**
- * Translate function
- * @param key:string phrase key
- * @param lang:string language key defaul navigatol.language
- * @returns 
- */
-const _t = (key: string, lang = navigator.language): string => t[lang] ? t[lang][key] || "-" : t["en"][key];
+/** Bound translator: normalizes `ru-RU` -> `ru`, falls back to `en`, then to the key itself. */
+const _t = (() => {
+  const translate = createTranslator(t as unknown as Record<string, Record<string, string>>);
+  return (key: string, lang?: string): string => translate(key, lang ?? resolveLang());
+})();
 
-//All semantic html5 known editor tags
+// All semantic HTML5 tags known to the editor
 const allTags = [
   { tag: 'h1' },
   { tag: 'h2' },
@@ -53,652 +60,702 @@ const allTags = [
   { tag: 'blockquote' },
   { tag: 'details' },
 ] as WCWYSIWYGTag[];
+
+export interface ScopedSelection {
+  selection: Selection | null;
+  element: HTMLElement | null;
+  text: string | null;
+  node: Node | null;
+}
+
 /**
- * Base class for WCWYSIWYG web component
+ * `wc-wysiwyg` — lightweight contentEditable WYSIWYG custom element.
+ *
+ * NOTE: intentionally **no Shadow DOM**. The editor is designed to inherit
+ * host-page CSS (content styles, `data-content-class`, CMS themes) and to
+ * let inserted semantic HTML (`pre`, `figure`, `details`, …) be styled by
+ * the page. The trade-off is style leakage in both directions; scope the
+ * page CSS (e.g. `.wc-wysiwyg_content …`) if isolation is required.
  */
 class WCWYSIWYG extends HTMLElement {
-  /**
-   * Tags included to action bar in editor
-   */
-  public EditorTags: WCWYSIWYGTag[]
-  /**
-   * Custom tags included to action bar in editor
-   */
-  public EditorCustomTags: WCWYSIWYGTag[]
-  /**
-   * Main ContentEditable element
-   */
-  public EditorNode: HTMLElement
-  /**
-   * Editor actions block elements with EditorTags buttons
-   */
-  public EditorActionsSection: HTMLElement
-  /**
-   * Custom web-components buttons <fieldset>
-   */
-  public EditorCustomTagsForm?: HTMLElement
-  //Inline edites
-  public EditorInlineActions: any[]
-  //Editor props
-  public EditorPropertyForm?: HTMLElement
-  //Clear btn
-  public EditorClearFormatBtn: HTMLButtonElement
-  //Autocomplete area
-  public EditorAutoCompleteForm?: HTMLElement
-  //Bottom actions
-  public EditorBottomForm?: HTMLElement
-  public EditorBottomFormNewP?: HTMLElement
-  public EditorBottomFormViewToggle?: HTMLElement
+  /** Tags included in the action bar. */
+  public EditorTags: WCWYSIWYGTag[] = [];
+  /** Custom tags included in the action bar. */
+  public EditorCustomTags: WCWYSIWYGTag[] = [];
+  /** Main contentEditable element. */
+  public EditorNode: HTMLElement | null = null;
+  /** Editor actions block with EditorTags buttons. */
+  public EditorActionsSection: HTMLElement | null = null;
+  /** Custom web-components buttons <fieldset>. */
+  public EditorCustomTagsForm?: HTMLElement;
+  // Inline edits
+  public EditorInlineActions: WCWYSIWYGTag[] = [];
+  // Editor props
+  public EditorPropertyForm?: HTMLElement;
+  // Clear btn
+  public EditorClearFormatBtn: HTMLButtonElement | null = null;
+  // Autocomplete area
+  public EditorAutoCompleteForm?: HTMLElement;
+  // Bottom actions
+  public EditorBottomForm?: HTMLElement;
+  public EditorBottomFormNewP?: HTMLElement;
+  public EditorBottomFormViewToggle?: HTMLElement;
 
-  public EditorPreviewText: HTMLTextAreaElement
-  public EditorTagsMethods: WCWYSIWYGActions
-  public EditorAllowTags: string[]
-  public EditorFullScreenButton?: HTMLElement
-  public lang: string = 'ru'
-  public value: string = ''
+  public EditorPreviewText: HTMLTextAreaElement | null = null;
+  public EditorTagsMethods: WCWYSIWYGActions | null = null;
+  public EditorAllowTags: string[] = [];
+  public EditorFullScreenButton?: HTMLElement;
+  public lang = 'ru';
+  public value = '';
 
   static observedAttributes = ['value'];
 
-  #EditProps: boolean | object
-  #Autocomplete: boolean
-  #Extensions: Extension[] = []
-  #StorageKey: string | null
-  #HideBottomActions: boolean
-  #Connected: boolean = false;
+  #EditProps: Record<string, string[]> | false = false;
+  #Autocomplete = false;
+  #ExtensionInstances: Extension[] = [];
+  #PendingExtensionCtors: ExtensionCtor[] = [];
+  #StorageKey: string | null = null;
+  #HideBottomActions = false;
+  #Connected = false;
+
+  #onFullscreenChange = (): void => {
+    this.classList.toggle('-fullscreen', document.fullscreenElement !== null);
+  };
+
+  #onRootSelectionChange = (): void => {
+    const editorSelection = this.getSelection();
+    if (editorSelection.selection !== null && !editorSelection.selection.isCollapsed) {
+      if (this.EditorPropertyForm) {
+        this.EditorPropertyForm.style.display = 'none';
+      }
+    }
+  };
 
   constructor() {
     super();
-    this.#checkExtensions();
+    // Drain synchronously-registered extensions (import order independent).
+    this.#PendingExtensionCtors = drainExtensions();
     this.classList.add('wc-wysiwyg');
-
-    //Listen root element events
-    this.onpointerup = (event: Event) => {
-      const editorSelection = this.getSelection();
-      //if check exist selection string
-      if (editorSelection.selection !== null && editorSelection.selection.text !== null) {
-        if (this.EditorPropertyForm) {
-          this.EditorPropertyForm.style.display = 'none';
-        }
-      }
-    };
-    this.onfullscreenchange = (event) => {
-      const isFullScreen = document.fullscreenElement;
-      this.classList.toggle('-fullscreen', isFullScreen !== null);
-    };
   }
 
-  connectedCallback() {
-    if (this.#Connected === false) {
-      const asyncExtensions = this.getAttribute('data-async-extensions') || false;
-      if (asyncExtensions !== false) {
-        const asyncExtensionsPaths = asyncExtensions.split(',');
-        asyncExtensionsPaths.forEach((extensionPath: string) => {
-          import(extensionPath).then(esm => {
-            const Extension = new esm.default(this);
-            if (typeof Extension.connectedCallback === 'function') {
-              Extension.connectedCallback();
-            }
-            if (this.#Extensions instanceof Array) {
-              this.#Extensions.push(Extension);
-            } else {
-              this.#Extensions = [Extension];
-            }
-          });
-        })
+  // ------------------------------------------------------------------ setup
+
+  connectedCallback(): void {
+    if (this.#Connected) return;
+
+    this.#loadAsyncExtensions();
+    this.#initTextarea();
+    this.#initConfig();
+    this.#buildToolbar();
+    this.#buildPropertyForm();
+    this.#buildAutocompleteForm();
+    this.#buildCustomTags();
+    this.#buildEditorNode();
+    this.#buildBottomBar();
+    this.#restoreInitialContent();
+    this.#connectExtensions();
+
+    document.addEventListener('fullscreenchange', this.#onFullscreenChange);
+    this.EditorNode?.addEventListener('keyup', this.#onRootSelectionChange);
+
+    this.updateContent();
+    this.#Connected = true;
+  }
+
+  disconnectedCallback(): void {
+    document.removeEventListener('fullscreenchange', this.#onFullscreenChange);
+    this.EditorNode?.removeEventListener('keyup', this.#onRootSelectionChange);
+    for (const extension of this.#ExtensionInstances) {
+      try {
+        extension.disconnectedCallback?.(this);
+      } catch {
+        /* extension teardown must never break the host page */
       }
-      //Check Tags
-      const allowTags = this.getAttribute('data-allow-tags') || allTags.map(t => t.tag).join(',');
-
-      //Bind inner textarea to wc-wysiwyg
-      this.EditorPreviewText = this.querySelector('textarea') as HTMLTextAreaElement;
-      this.EditorPreviewText.className = 'wc-wysiwyg_pr -display-none';
-      this.EditorPreviewText.oninput = (event: Event) => {
-        const target = event.target as HTMLTextAreaElement;
-        this.EditorNode.innerHTML = target.value;
-        this.value = target.value;
-      };
-
-      this.EditorAllowTags = allowTags.split(',');
-      this.EditorTags = allTags.filter(tag => allowTags.includes(tag.tag));
-
-      this.#EditProps = this.getAttribute('data-edit-props') !== null ? JSON.parse(this.getAttribute('data-edit-props') || '') : false;
-      this.#Autocomplete = this.getAttribute('data-autocomplete') === '1';
-      this.#HideBottomActions = this.getAttribute('data-hide-bottom-actions') === '1';
-
-      //allow inline without ['video','audio','img']
-      this.EditorInlineActions = this.EditorTags.filter(action => ['video', 'audio', 'img'].includes(action.tag) === false);
-
-      //Clear format button
-      this.EditorClearFormatBtn = el('button', {
-        classList: ['wc-wysiwyg_btn', '-clear'],
-        attrs: {
-          'data-hint': _t('clearFormat'),
-        },
-        props: {
-          innerHTML: 'Ⱦ',
-        },
-      });
-      //Top editor actions sections
-      this.EditorActionsSection = el('section', {
-        classList: ['wc-wysiwyg_ec'],
-      });
-      this.#makeActionButtons(this.EditorActionsSection, this.EditorTags);
-      this.EditorActionsSection.append(this.EditorClearFormatBtn);
-
-      //Edit props
-      if (this.#EditProps) {
-        //Inline property editor
-        this.EditorPropertyForm = el('form', {
-          styles: { display: 'none' },
-          classList: ['wc-wysiwyg_pf'],
-          props: {
-            onsubmit: (event: Event) => {
-              event.preventDefault();
-              this.EditorPropertyForm.style.display = 'none';
-            },
-            onpointerup: event => event.stopPropagation(),
-          }
-        });
-        this.EditorActionsSection.append(this.EditorPropertyForm);
-      }
-
-      //Autocomplete form
-      if (this.#Autocomplete) {
-        this.EditorAutoCompleteForm = el('form', {
-          classList: ['wc-wysiwyg_au'],
-          props: {
-            onsubmit: (submitEvent: SubmitEvent) => {
-              if(submitEvent) {
-                submitEvent.preventDefault();
-                submitEvent.stopPropagation();
-                const tagName = submitEvent.submitter?.value;
-                const newEl = el(tagName, {
-                  props: {
-                    innerHTML: tagName
-                  }
-                });
-                submitEvent.target?.parentElement.replaceWith(newEl);
-                newEl.focus();
-              }
-            }
-          }
-        });
-      }
-
-      //Actions in footer
-      this.EditorBottomForm = el('fieldset', { classList: ['wc-wysiwyg_bt'] });
-
-      //Check custom tags
-      const DataCustomTags = this.getAttribute('data-custom-tags');
-      if (DataCustomTags !== null) {
-        try {
-          const CustomTags = JSON.parse(DataCustomTags);
-          this.EditorCustomTags = CustomTags;
-          if (this.EditorCustomTags !== null) {
-            //Custom panel tags 
-            this.EditorCustomTagsForm = el('fieldset', {
-              classList: ['wc-wysiwyg_ce'],
-            }) as HTMLElement;
-            //Make custom actions buttons panel
-            this.#makeActionButtons(this.EditorCustomTagsForm, this.EditorCustomTags);
-
-            this.EditorActionsSection.prepend(this.EditorCustomTagsForm);
-          }
-        } catch (e) {
-          console.error(`WC-WYSOWYG: Failed to parse data-custom-tags`, e);
-        }
-      }
-
-      //Node editable
-      this.EditorNode = el('article', {
-        classList: ['wc-wysiwyg_content', this.getAttribute('data-content-class') || ''],
-        props: {
-          contentEditable: true,
-          //Pointer event behaviors
-          onpointerup: (event: Event) => {
-            this.#checkCanClearElement(event);
-            if (this.#EditProps) {
-              this.#checkEditProps(event);
-            }
-          },
-          //Update content on input event
-          oninput: (event: Event) => {
-            this.updateContent();
-            if (this.#Autocomplete) {
-              this.#checkAutoComplete();
-            }
-          },
-          //Check hot keys is pressed
-          onkeydown: (event: Event) => {
-            this.#checkKeyBindings(event);
-          },
-          onpaste: (event: ClipboardEvent) => {
-            // if(event.type === 'paste') {
-            //     window.navigator.clipboard.readText().then(text => {
-            //         const target = event.target as HTMLElement;
-            //         //Check isnert html symbol
-            //         if(text.startsWith('&#') === false) {
-            //             if(target.tagName === 'BR') {
-            //                 target.insertAdjacentText('afterend',text);
-            //             }
-            //             this.updateContent();
-            //             event.preventDefault();
-            //             event.stopPropagation();
-
-            //             return false;
-            //         } 
-            //     });
-            // }
-          }
-        },
-      });
-
-      //Inser wc-editor after textarea node
-      this.append(
-        this.EditorActionsSection,
-        this.EditorNode,
-      );
-
-      if (this.#HideBottomActions === false) {
-        //Toggler btn text/html
-        this.EditorBottomFormViewToggle = el('button', {
-          classList: ['wc-wysiwyg_btn'],
-          attrs: {
-            'data-hint': _t('toggleViewMode'),
-            'data-mode': 'html5',
-          },
-          props: {
-            type: 'button',
-            innerText: 'текст/html5',
-            onpointerup: (event:Event) => {
-              const newMode = this.EditorBottomFormViewToggle?.getAttribute('data-mode') === 'html5'
-                ? 'text'
-                : 'html5';
-              this.EditorBottomFormViewToggle?.setAttribute('data-mode', newMode);
-              this.EditorNode.style.display = newMode === 'html5' ? '' : 'none';
-              this.EditorPreviewText.classList.toggle('-display-none', newMode === 'html5' ? true : false)
-              if (newMode === 'text') {
-                this.EditorPreviewText.value = this.EditorNode.innerHTML;
-              }
-            }
-          }
-        });
-        ///New <p> append btn
-        this.EditorBottomFormNewP = el('button', {
-          classList: ['wc-wysiwyg_btn'],
-          attrs: {
-            'data-hint': _t('addNewParahraph'),
-          },
-          props: {
-            type: 'button',
-            innerText: '+ ❡',
-            onpointerup: (event: Event) => {
-              const P = el('p', { props: { innerText: '/' } });
-              this.EditorNode.appendChild(P);
-              P.focus();
-            }
-          }
-        });
-        //Fullscreen button
-        this.EditorFullScreenButton = el('button', {
-          classList: ['wc-wysiwyg_btn'],
-          attrs: {
-            'data-hint': _t('fullScreen'),
-          },
-          props: {
-            type: "button",
-            ariaRoleDescription: "button",
-            innerText: '🖥️',
-            onpointerup: (event: Event) => {
-              this.requestFullscreen();
-            }
-          }
-        });
-
-        this.EditorBottomForm?.append(
-          this.EditorBottomFormNewP,
-          this.EditorBottomFormViewToggle,
-          this.EditorFullScreenButton,
-        );
-        this.append(this.EditorBottomForm);
-      }
-      this.EditorNode.innerHTML = this.EditorPreviewText.value;
-      //Check local storage key
-      this.#StorageKey = this.getAttribute('data-storage');
-      if (this.#StorageKey) {
-        let storeValue = window.localStorage.getItem(this.#StorageKey);
-        if (storeValue) {
-          this.EditorNode.innerHTML = storeValue;
-        }
-      }
-      //Check and call connectedCallback in extensions
-      if (this.#Extensions instanceof Array) {
-        this.#Extensions.forEach(extension => typeof extension.connectedCallback === 'function' ? extension.connectedCallback(this) : false);
-      }
-      this.updateContent();
-
-      this.#Connected = true;
     }
+    this.#ExtensionInstances = [];
+    this.#Connected = false;
   }
 
-  /**
-   * Update content value and update behaviors
-   */
-  updateContent() {
-    // Update the value of the editor node to the current innerHTML
-    this.value = this.EditorNode.innerHTML;
-    // Update the value of the EditorPreviewText to the current value
-    this.EditorPreviewText.value = this.value;
-    // Check the validity of the current value
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
+    if (name !== 'value' || !this.#Connected || oldValue === newValue) return;
+    const clean = this.#sanitizedOutput(newValue ?? '');
+    this.value = clean;
+    if (this.EditorPreviewText && this.EditorPreviewText.value !== clean) {
+      this.EditorPreviewText.value = clean;
+    }
+    if (this.EditorNode && this.EditorNode.innerHTML !== clean) {
+      this.EditorNode.innerHTML = clean;
+    }
     this.checkValidity();
-    // Dispatch an event to indicate that the input has been changed
-    this.dispatchEvent(new Event('oninput', { bubbles: true, cancelable: false }));
-    // Update the preview element with the data attribute 'data-preview-el'
-    this.updatePreviewEl(this.getAttribute('data-preview-el'));
-    //Update storage value if StorageKey exits
-    if (this.#StorageKey) {
-      window.localStorage.setItem(this.#StorageKey, this.value);
-    }
   }
 
-  /**
-   * Update content at preview element if exists
-   * @param selector css
-   */
-  updatePreviewEl(selector: string) {
-    if (selector) {
-      const previewEl = window.document.body.querySelector(selector);
-      if (previewEl) {
-        previewEl.innerHTML = this.value;
-      }
-    }
-  }
+  // ------------------------------------------------------------ init steps
 
-  /**
-   * Validate content
-   * @returns boolean hasErrors
-   */
-  checkValidity() {
-    let hasErros = false,
-      errors: string[] = [];
-
-    //Check attrs
-    if (this.getAttribute('required') !== null) {
-      if (String(this.EditorNode.textContent).length === 0) {
-        hasErros = true;
-        errors.push(_t('required'));
-      }
-    }
-    if (Number(this.getAttribute('minlength'))) {
-      if (String(this.EditorNode.textContent).length < Number(this.getAttribute('minlength'))) {
-        hasErros = true;
-        errors.push(`${_t('minlength')} ${this.getAttribute('minlength')}`);
-      }
-    }
-    if (Number(this.getAttribute('maxlength'))) {
-      if (String(this.EditorNode.textContent).length > Number(this.getAttribute('maxlength'))) {
-        hasErros = true;
-        errors.push(`${_t('maxlength')} ${this.getAttribute('maxlength')}`);
-      }
-    }
-    const filterTags = this.getAttribute('filtertags');
-    if (filterTags !== null) {
-      const disallowTags = filterTags.split(',') || [];
-      for (let i = 0; i < disallowTags.length; i++) {
-        const checkTag = disallowTags[i];
-        if (this.EditorNode.querySelector(checkTag)) {
-          hasErros = true;
-          errors.push(`${_t('filtertags')} ${checkTag}`);
-          break;
-        }
-      }
-    }
-    this.EditorNode.classList.toggle('-invalid', hasErros);
-    let oldErrors = this.querySelector('.-errors');
-    if (oldErrors) {
-      oldErrors.parentElement?.removeChild(oldErrors);
-    }
-    if (hasErros) {
-      const errosEl = el('p', {
-        props: {
-          innerHTML: errors.join('<br>')
-        },
-        classList: ['-errors'],
-      })
-
-      this.append(errosEl);
-    }
-    return hasErros === false;
-  }
-
-  /**
-   * Check if need append autocompleted tags variants
-   */
-  #checkAutoComplete() {
-    //CHeck autococmplete 
-    const editorSelection = this.getSelection();
-    if (editorSelection.selection !== null && editorSelection.selection.anchorNode !== null) {
-      const SelectionParentEl = editorSelection.selection.anchorNode.parentElement as HTMLParagraphElement;
-      const AutoCompleteForm = this.EditorAutoCompleteForm as HTMLElement;
-      if (SelectionParentEl !== null &&
-        //if empty selection
-        editorSelection.text === null &&
-        //and parent node is <p>
-        SelectionParentEl.nodeName === 'P' &&
-        //and parent <p> is parentElement in EditorNode
-        SelectionParentEl.parentElement === this.EditorNode) {
-        //and parent <p> inner text starts with `/` 
-        if (SelectionParentEl.innerText.startsWith('/')) {
-          const parsedTagName = SelectionParentEl.innerText.replace('/', '');
-          const filteredActions = this.EditorTags.filter(action => action.tag.toLocaleLowerCase().startsWith(parsedTagName.toLocaleLowerCase()));
-          if (filteredActions.length > 0) {
-            AutoCompleteForm.innerHTML = '';
-            filteredActions.forEach(action => {
-              AutoCompleteForm?.appendChild(el('button', {
-                classList: ['wc-wysiwyg_btn', `-${action.tag}`],
-                attrs: {
-                  'data-hint': _t(action.tag) || null,
-                  'aria-label': _t(action.tag) || null,
-                  'role': 'button',
-                  'tabindex': '0',
-                },
-                props: {
-                  type: 'submit',
-                  innerText: action.tag,
-                  value: action.tag,
-                  onkeydown: (e: KeyboardEvent) => {
-                    // Add support Enter and Space for btns
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      e.currentTarget?.dispatchEvent(new Event('pointerup', { bubbles: true }));
-                    }
-                  },
-                }
-              }))
-            });
-            SelectionParentEl.appendChild(AutoCompleteForm);
-          } else {
-            //clear form
-            AutoCompleteForm.innerHTML = '';
-            //if exist in DOM detach
-            if (AutoCompleteForm.parentElement) {
-              AutoCompleteForm.parentElement.removeChild(AutoCompleteForm);
-            }
+  #loadAsyncExtensions(): void {
+    const asyncExtensions = this.getAttribute('data-async-extensions');
+    if (!asyncExtensions) return;
+    for (const extensionPath of asyncExtensions.split(',')) {
+      const path = extensionPath.trim();
+      if (!path) continue;
+      import(/* @vite-ignore */ path)
+        .then((esm: { default?: new (editor: WCWYSIWYG) => Extension }) => {
+          if (typeof esm?.default !== 'function') return;
+          try {
+            const instance = new esm.default(this);
+            this.#ExtensionInstances.push(instance);
+            instance.connectedCallback?.(this);
+          } catch {
+            /* broken async extension must not break the editor */
           }
-        }
+        })
+        .catch(() => {
+          /* failed import must not break the editor */
+        });
+    }
+  }
+
+  /** Find the bound `<textarea>`; create one if the author omitted it. */
+  #initTextarea(): void {
+    let textarea = this.querySelector('textarea');
+    if (!(textarea instanceof HTMLTextAreaElement)) {
+      textarea = el('textarea', { styles: { display: 'none' } });
+      this.prepend(textarea);
+    }
+    this.EditorPreviewText = textarea;
+    this.EditorPreviewText.classList.add('wc-wysiwyg_pr', '-display-none');
+    this.EditorPreviewText.addEventListener('input', (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLTextAreaElement) || !this.EditorNode) return;
+      this.EditorNode.innerHTML = this.#sanitizedOutput(target.value);
+      this.value = this.EditorNode.innerHTML;
+    });
+  }
+
+  #initConfig(): void {
+    const allowTags = this.getAttribute('data-allow-tags') || allTags.map((tag) => tag.tag).join(',');
+    this.EditorAllowTags = allowTags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    this.EditorTags = allTags.filter((tag) => this.EditorAllowTags.includes(tag.tag));
+
+    this.#EditProps = safeJsonParse<Record<string, string[]> | false>(
+      this.getAttribute('data-edit-props'),
+      false,
+    );
+    if (this.#EditProps !== false && (typeof this.#EditProps !== 'object' || this.#EditProps === null)) {
+      this.#EditProps = false;
+    }
+    this.#Autocomplete = this.getAttribute('data-autocomplete') === '1';
+    this.#HideBottomActions = this.getAttribute('data-hide-bottom-actions') === '1';
+
+    // Allow inline actions for everything except media (no meaningful text wrap).
+    this.EditorInlineActions = this.EditorTags.filter((action) => !['video', 'audio', 'img'].includes(action.tag));
+  }
+
+  #buildToolbar(): void {
+    this.EditorClearFormatBtn = el('button', {
+      classList: ['wc-wysiwyg_btn', '-clear'],
+      attrs: { 'data-hint': _t('clearFormat'), 'aria-label': _t('clearFormat'), type: 'button' },
+      props: { type: 'button', textContent: 'Ⱦ' },
+      styles: { display: 'none' },
+      events: { click: (event: Event) => event.stopPropagation() },
+    });
+    this.EditorActionsSection = el('section', { classList: ['wc-wysiwyg_ec'] });
+    this.#makeActionButtons(this.EditorActionsSection, this.EditorTags);
+    this.EditorActionsSection.append(this.EditorClearFormatBtn);
+  }
+
+  #buildPropertyForm(): void {
+    if (!this.#EditProps || !this.EditorActionsSection) return;
+    this.EditorPropertyForm = el('form', {
+      styles: { display: 'none' },
+      classList: ['wc-wysiwyg_pf'],
+      events: {
+        submit: (event: Event) => {
+          event.preventDefault();
+          if (this.EditorPropertyForm) this.EditorPropertyForm.style.display = 'none';
+        },
+        click: (event: Event) => event.stopPropagation(),
+      },
+    });
+    this.EditorActionsSection.append(this.EditorPropertyForm);
+  }
+
+  #buildAutocompleteForm(): void {
+    if (!this.#Autocomplete) return;
+    this.EditorAutoCompleteForm = el('form', {
+      classList: ['wc-wysiwyg_au'],
+      events: {
+        submit: (submitEvent: Event) => {
+          submitEvent.preventDefault();
+          submitEvent.stopPropagation();
+          const submitter = (submitEvent as SubmitEvent).submitter;
+          const tagName =
+            submitter instanceof HTMLButtonElement || submitter instanceof HTMLInputElement
+              ? submitter.value
+              : '';
+          if (!/^[a-z][a-z0-9-]*$/i.test(tagName)) return;
+          const newEl = el(tagName, { props: { textContent: tagName } });
+          const form = submitEvent.target;
+          if (form instanceof HTMLElement) form.replaceWith(newEl);
+          newEl.focus();
+        },
+      },
+    });
+  }
+
+  #buildCustomTags(): void {
+    const raw = this.getAttribute('data-custom-tags');
+    if (raw === null || !this.EditorActionsSection) return;
+    const customTags = safeJsonParse<WCWYSIWYGTag[] | null>(raw, null);
+    if (!Array.isArray(customTags)) return;
+    this.EditorCustomTags = customTags.filter(
+      (tag): tag is WCWYSIWYGTag => typeof tag?.tag === 'string' && tag.tag !== '',
+    );
+    if (this.EditorCustomTags.length === 0) return;
+    this.EditorCustomTagsForm = el('fieldset', { classList: ['wc-wysiwyg_ce'] });
+    this.#makeActionButtons(this.EditorCustomTagsForm, this.EditorCustomTags);
+    this.EditorActionsSection.prepend(this.EditorCustomTagsForm);
+  }
+
+  #buildEditorNode(): void {
+    if (!this.EditorActionsSection) return;
+    this.EditorBottomForm = el('fieldset', { classList: ['wc-wysiwyg_bt'] });
+
+    this.EditorNode = el('article', {
+      classList: ['wc-wysiwyg_content', this.getAttribute('data-content-class') || ''],
+      props: { contentEditable: 'true' },
+      events: {
+        pointerup: (event: Event) => this.#onEditorInteract(event),
+        keyup: (event: Event) => this.#onEditorInteract(event),
+        input: () => {
+          this.updateContent();
+          if (this.#Autocomplete) this.#checkAutoComplete();
+        },
+        keydown: (event: Event) => this.#checkKeyBindings(event as KeyboardEvent),
+        paste: (event: Event) => this.#handlePaste(event as ClipboardEvent),
+      },
+    });
+
+    this.append(this.EditorActionsSection, this.EditorNode);
+  }
+
+  #onEditorInteract(event: Event): void {
+    this.#checkCanClearElement(event);
+    if (this.#EditProps) this.#checkEditProps(event);
+  }
+
+  #buildBottomBar(): void {
+    if (this.#HideBottomActions || !this.EditorBottomForm) return;
+
+    this.EditorBottomFormViewToggle = el('button', {
+      classList: ['wc-wysiwyg_btn'],
+      attrs: { 'data-hint': _t('toggleViewMode'), 'aria-label': _t('toggleViewMode'), 'data-mode': 'html5' },
+      props: { type: 'button', textContent: _t('viewModeLabel') },
+      events: {
+        click: () => {
+          const toggle = this.EditorBottomFormViewToggle;
+          const node = this.EditorNode;
+          const preview = this.EditorPreviewText;
+          if (!toggle || !node || !preview) return;
+          const newMode = toggle.getAttribute('data-mode') === 'html5' ? 'text' : 'html5';
+          toggle.setAttribute('data-mode', newMode);
+          node.style.display = newMode === 'html5' ? '' : 'none';
+          preview.classList.toggle('-display-none', newMode === 'html5');
+          if (newMode === 'text') preview.value = node.innerHTML;
+        },
+      },
+    });
+    this.EditorBottomFormNewP = el('button', {
+      classList: ['wc-wysiwyg_btn'],
+      attrs: { 'data-hint': _t('addNewParagraph'), 'aria-label': _t('addNewParagraph') },
+      props: { type: 'button', textContent: '+ ❡' },
+      events: {
+        click: () => {
+          if (!this.EditorNode) return;
+          const p = el('p', { props: { textContent: '/' } });
+          this.EditorNode.appendChild(p);
+          p.focus();
+        },
+      },
+    });
+    this.EditorFullScreenButton = el('button', {
+      classList: ['wc-wysiwyg_btn'],
+      attrs: { 'data-hint': _t('fullScreen'), 'aria-label': _t('fullScreen') },
+      props: { type: 'button', textContent: '🖥️' },
+      events: {
+        click: () => {
+          this.requestFullscreen?.()?.catch?.(() => {
+            /* fullscreen denied — not fatal */
+          });
+        },
+      },
+    });
+
+    this.EditorBottomForm.append(
+      this.EditorBottomFormNewP,
+      this.EditorBottomFormViewToggle,
+      this.EditorFullScreenButton,
+    );
+    this.append(this.EditorBottomForm);
+  }
+
+  #restoreInitialContent(): void {
+    if (!this.EditorNode || !this.EditorPreviewText) return;
+    this.EditorNode.innerHTML = this.#sanitizedOutput(this.EditorPreviewText.value);
+    this.#StorageKey = this.getAttribute('data-storage');
+    if (this.#StorageKey) {
+      const stored = safeStorageGet(this.#StorageKey);
+      if (stored) this.EditorNode.innerHTML = this.#sanitizedOutput(stored);
+    }
+  }
+
+  #connectExtensions(): void {
+    for (const Ctor of this.#PendingExtensionCtors) {
+      try {
+        this.#ExtensionInstances.push(new Ctor(this) as Extension);
+      } catch {
+        /* broken extension must not break the editor */
+      }
+    }
+    this.#PendingExtensionCtors = [];
+    for (const extension of this.#ExtensionInstances) {
+      try {
+        extension.connectedCallback?.(this);
+      } catch {
+        /* ignore */
       }
     }
   }
 
+  // ------------------------------------------------------------- public API
+
+  /** Sync editor HTML -> `value`, textarea, preview, storage; emits `input`. */
+  updateContent(): void {
+    if (!this.EditorNode || !this.EditorPreviewText) return;
+    const clean = this.#sanitizedOutput(this.EditorNode.innerHTML);
+    this.value = clean;
+    if (this.EditorPreviewText.value !== clean) this.EditorPreviewText.value = clean;
+    this.checkValidity();
+    // NOTE: historically emitted `oninput`, which no framework listens to.
+    this.dispatchEvent(new Event('input', { bubbles: true, cancelable: false }));
+    this.updatePreviewEl(this.getAttribute('data-preview-el'));
+    if (this.#StorageKey) safeStorageSet(this.#StorageKey, clean);
+  }
+
+  /** Update live preview element with sanitized HTML. */
+  updatePreviewEl(selector: string | null): void {
+    if (!selector) return;
+    let previewEl: Element | null = null;
+    try {
+      previewEl = window.document.querySelector(selector);
+    } catch {
+      return;
+    }
+    if (previewEl) previewEl.innerHTML = this.#sanitizedOutput(this.value);
+  }
+
+  /** Validate content; renders messages with `textContent` (no HTML injection). */
+  checkValidity(): boolean {
+    if (!this.EditorNode) return false;
+    let hasErrors = false;
+    const errors: string[] = [];
+    const textLength = (this.EditorNode.textContent ?? '').length;
+
+    if (this.getAttribute('required') !== null && textLength === 0) {
+      hasErrors = true;
+      errors.push(_t('required'));
+    }
+    const minlength = Number(this.getAttribute('minlength'));
+    if (Number.isFinite(minlength) && minlength > 0 && textLength < minlength) {
+      hasErrors = true;
+      errors.push(`${_t('minlength')} ${this.getAttribute('minlength')}`);
+    }
+    const maxlength = Number(this.getAttribute('maxlength'));
+    if (Number.isFinite(maxlength) && maxlength > 0 && textLength > maxlength) {
+      hasErrors = true;
+      errors.push(`${_t('maxlength')} ${this.getAttribute('maxlength')}`);
+    }
+    const blocked = parseTagList(this.getAttribute('filtertags'));
+    for (const checkTag of blocked) {
+      let found = false;
+      try {
+        found = this.EditorNode.querySelector(checkTag) !== null;
+      } catch {
+        found = false;
+      }
+      if (found) {
+        hasErrors = true;
+        errors.push(`${_t('filtertags')} ${checkTag}`);
+        break;
+      }
+    }
+
+    this.EditorNode.classList.toggle('-invalid', hasErrors);
+    this.querySelector('.-errors')?.remove();
+    if (hasErrors) {
+      const errorsEl = el('p', { classList: ['-errors'] });
+      errors.forEach((message, index) => {
+        if (index > 0) errorsEl.append(document.createElement('br'));
+        errorsEl.append(document.createTextNode(message));
+      });
+      this.append(errorsEl);
+    }
+    return !hasErrors;
+  }
+
   /**
-   * Checking clear form and clear, if can do it
-   * @param event 
+   * Scoped selection: returns the global selection ONLY when its anchor is
+   * inside this editor; otherwise `selection` is `null` so callers don't act
+   * on foreign selections or crash on `anchorNode === null`.
    */
-  #checkCanClearElement(event: Event) {
-    const eventTarget = event.target as HTMLElement,
-      clearBtn = this.EditorClearFormatBtn;
-    if (eventTarget !== this.EditorNode) {
-      if (eventTarget.nodeName !== 'P'
-        && eventTarget.nodeName !== 'SPAN') {
-        clearBtn.style.display = 'inline-block';
-        clearBtn.innerHTML = `Ⱦ ${eventTarget.nodeName}`,
-          clearBtn.onpointerup = (event) => {
-            eventTarget.replaceWith(document.createTextNode(eventTarget.textContent));
-          };
+  getSelection(): ScopedSelection {
+    const empty: ScopedSelection = { selection: null, element: null, text: null, node: null };
+    const windowSelection = window.getSelection();
+    if (!windowSelection || windowSelection.anchorNode === null) return empty;
+    if (this.EditorNode && !this.EditorNode.contains(windowSelection.anchorNode)) return empty;
+    const anchor = windowSelection.anchorNode;
+    return {
+      selection: windowSelection,
+      node: anchor,
+      element:
+        anchor instanceof HTMLElement
+          ? anchor
+          : anchor.parentElement instanceof HTMLElement
+            ? anchor.parentElement
+            : null,
+      text: windowSelection.toString().length > 0 ? windowSelection.toString() : null,
+    };
+  }
+
+  // ---------------------------------------------------------------- helpers
+
+  #sanitizedOutput(html: string): string {
+    return sanitizeHTML(html, { blockTags: parseTagList(this.getAttribute('filtertags')) });
+  }
+
+  /** Wrap current selection; falls back when `surroundContents` throws (partial node selection). */
+  #wrapInTag(tagNode: HTMLElement, placeholder: string): boolean {
+    const { selection } = this.getSelection();
+    if (!selection || selection.rangeCount === 0) return false;
+    try {
+      const range = selection.getRangeAt(0).cloneRange();
+      if (range.collapsed) {
+        tagNode.textContent = placeholder;
+        range.insertNode(tagNode);
       } else {
-        clearBtn.style.display = 'none';
-        clearBtn.onpointerup = null;
+        try {
+          range.surroundContents(tagNode);
+        } catch {
+          // Selection spans partial nodes — move contents manually.
+          tagNode.appendChild(range.extractContents());
+          range.insertNode(tagNode);
+        }
+        if (tagNode.textContent === '') tagNode.textContent = placeholder;
       }
+      selection.removeAllRanges();
+      const after = document.createRange();
+      after.selectNodeContents(tagNode);
+      selection.addRange(after);
+      return true;
+    } catch {
+      return false;
     }
   }
 
-  /**
-   * Clear  all listeners
-   */
-  disconnectedCallback() {
-    // Remove liseners
-    this.onpointerup = null;
-    this.onfullscreenchange = null;
-
-    // Remove global event listener
-    document.removeEventListener('fullscreenchange', this.onFullscreenChange);
+  #checkAutoComplete(): void {
+    const editorSelection = this.getSelection();
+    const form = this.EditorAutoCompleteForm;
+    if (editorSelection.selection === null || editorSelection.selection.anchorNode === null || !form) return;
+    const parent = editorSelection.selection.anchorNode.parentElement;
+    if (
+      parent === null ||
+      editorSelection.text !== null ||
+      parent.nodeName !== 'P' ||
+      parent.parentElement !== this.EditorNode
+    ) {
+      return;
+    }
+    if (!parent.textContent?.startsWith('/')) return;
+    const parsedTagName = parent.textContent.replace('/', '');
+    const filteredActions = this.EditorTags.filter((action) =>
+      action.tag.toLowerCase().startsWith(parsedTagName.toLowerCase()),
+    );
+    if (filteredActions.length === 0) {
+      form.innerHTML = '';
+      form.remove();
+      return;
+    }
+    form.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    for (const action of filteredActions) {
+      fragment.appendChild(
+        el('button', {
+          classList: ['wc-wysiwyg_btn', `-${action.tag}`],
+          attrs: { 'data-hint': _t(action.tag), 'aria-label': _t(action.tag) },
+          props: { type: 'submit', textContent: action.tag, value: action.tag },
+        }),
+      );
+    }
+    form.append(fragment);
+    parent.appendChild(form);
   }
 
-  /**
-   * Checking click tag for editable props
-   **/
-  #checkEditProps(event) {
-    const eventTarget = event.target as HTMLElement;
+  #checkCanClearElement(event: Event): void {
+    const eventTarget = event.target;
+    const clearBtn = this.EditorClearFormatBtn;
+    if (!(eventTarget instanceof HTMLElement) || !clearBtn || eventTarget === this.EditorNode) return;
+    if (eventTarget.nodeName !== 'P' && eventTarget.nodeName !== 'SPAN') {
+      clearBtn.style.display = 'inline-block';
+      clearBtn.textContent = `Ⱦ ${eventTarget.nodeName}`;
+      clearBtn.onclick = (clickEvent: MouseEvent) => {
+        clickEvent.stopPropagation();
+        eventTarget.replaceWith(document.createTextNode(eventTarget.textContent ?? ''));
+        this.updateContent();
+      };
+    } else {
+      clearBtn.style.display = 'none';
+      clearBtn.onclick = null;
+    }
+  }
 
-    //Check exist prop\attr
-    if (this.#EditProps[eventTarget.nodeName]) {
-      const props = this.#EditProps[eventTarget.nodeName];
-      event.stopPropagation();
-      this.dispatchEvent(new CustomEvent('editprops', {
-        detail: { eventTarget }
-      }));
-      this.EditorPropertyForm.style.display = '';
-      this.EditorPropertyForm.style.display = 'block';
-      this.EditorPropertyForm.setAttribute('data-tag', eventTarget.nodeName);
-      this.EditorPropertyForm.innerHTML = '';
-      for (let i = 0; i < props.length; i++) {
-        const tagProp = props[i];
-        const isAttr = tagProp.indexOf('data-') > -1 || tagProp === 'class';
-        this.EditorPropertyForm.append(el('label', {
-          props: { innerText: `${tagProp}=` },
+  #checkEditProps(event: Event): void {
+    const eventTarget = event.target;
+    if (!(eventTarget instanceof HTMLElement) || !this.#EditProps) return;
+    const nodeName = eventTarget.nodeName;
+    const props = this.#EditProps[nodeName];
+    if (!props) return;
+    event.stopPropagation();
+    this.dispatchEvent(new CustomEvent('editprops', { detail: { eventTarget } }));
+    const form = this.EditorPropertyForm;
+    if (!form) return;
+    form.style.display = 'block';
+    form.setAttribute('data-tag', nodeName);
+    form.innerHTML = '';
+    for (const tagProp of props) {
+      const isAttr = tagProp.includes('data-') || tagProp === 'class';
+      const current = isAttr
+        ? (eventTarget.getAttribute(tagProp) ?? '')
+        : String((eventTarget as unknown as Record<string, unknown>)[tagProp] ?? '');
+      form.append(
+        el('label', {
+          props: { textContent: `${tagProp}=` },
           append: [
             el('input', {
               attrs: { placeholder: tagProp },
               classList: ['wc-wysiwyg_inp'],
               props: {
-                value: isAttr ? eventTarget.getAttribute(tagProp) : eventTarget[tagProp] || '',
-                oninput: (eventInput) => {
-                  const eventInputTarget = eventInput.target as HTMLInputElement;
+                value: current,
+              },
+              events: {
+                input: (eventInput: Event) => {
+                  const input = eventInput.target;
+                  if (!(input instanceof HTMLInputElement)) return;
                   if (tagProp === 'class') {
-                    eventTarget.className = eventInputTarget.value;
-                  }
-                  if ((isAttr || tagProp === 'datetime') && eventInputTarget !== null) {
-                    eventTarget.setAttribute(tagProp, eventInputTarget.value)
+                    eventTarget.className = input.value;
+                  } else if (isAttr || tagProp === 'datetime') {
+                    eventTarget.setAttribute(tagProp, input.value);
                   } else {
-                    eventTarget[tagProp] = eventInputTarget.value;
+                    (eventTarget as unknown as Record<string, unknown>)[tagProp] = input.value;
                   }
                   this.updateContent();
-                }
-              }
-            })
-          ]
-        }));
-      }
-      //add submit button for better UX
-      this.EditorPropertyForm.append(el('button', {
-        classList: ['wc-wysiwyg_btn'],
-        props: {
-          type: 'submit',
-          innerHTML: '&#8627;',
-        },
-      }));
+                },
+              },
+            }),
+          ],
+        }),
+      );
     }
+    form.append(
+      el('button', {
+        classList: ['wc-wysiwyg_btn'],
+        props: { type: 'submit', textContent: '↵' },
+        attrs: { 'aria-label': _t('close') },
+      }),
+    );
   }
 
-  /**
-   * Cheking hot keys when keydown pressed
-   * @param event Keyboard event
-   */
-  #checkKeyBindings(event: KeyboardEvent) {
-    //check hold alt
-    if (event.altKey) {
-      //alt+space - move caret to parent node next sibling
-      if (event.code === 'Space') {
-        const editorSelection = this.getSelection();
-        const Selection = editorSelection.selection;
-        if (Selection !== null) {
-          if (Selection.type === 'Caret') {
-            //insertAdjacentElement dont support textNodes, first insert span
-            const span = el('span');
-            Selection.anchorNode?.parentElement?.insertAdjacentElement('afterend', span)
-            //after replace span with textnode and select it
-            const textN = document.createTextNode('&nbsp');
-            span.replaceWith(textN);
-            const range = document.createRange();
-            range.selectNodeContents(textN);
-            Selection.removeAllRanges();
-            Selection.addRange(range);
-          }
-        }
+  #checkKeyBindings(event: KeyboardEvent): void {
+    if (event.altKey && event.code === 'Space') {
+      const { selection } = this.getSelection();
+      if (selection && selection.type === 'Caret') {
+        const span = el('span');
+        selection.anchorNode?.parentElement?.insertAdjacentElement('afterend', span);
+        const textNode = document.createTextNode(' ');
+        span.replaceWith(textNode);
+        const range = document.createRange();
+        range.selectNodeContents(textNode);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        event.preventDefault();
       }
     }
-    //enter - set p as default tag in newline
+    // Enter without Shift inserts a plain <p> (predictable newline in custom blocks).
     if (event.code === 'Enter' && event.shiftKey === false) {
-      const Selection = this.getSelection().selection;
-      let tagName = 'p';
-      //tags with return default browser behavior
-      if (['LI', 'ARTICLE', 'P'].includes(Selection.anchorNode.parentElement.tagName)) {
-        return false;
-      }
-      const p = el(tagName, { props: { innerHTML: `&nbsp;` } });
-      Selection?.anchorNode?.parentElement?.insertAdjacentElement('afterend', p);
+      const { selection } = this.getSelection();
+      const parentTag = selection?.anchorNode?.parentElement?.tagName;
+      if (!selection || (parentTag && ['LI', 'ARTICLE', 'P'].includes(parentTag))) return;
+      const p = el('p', { props: { innerHTML: '&nbsp;' } });
+      selection.anchorNode?.parentElement?.insertAdjacentElement('afterend', p);
       const range = document.createRange();
       range.selectNodeContents(p);
-      Selection?.removeAllRanges();
-      Selection?.addRange(range);
+      selection.removeAllRanges();
+      selection.addRange(range);
       event.stopPropagation();
       event.preventDefault();
     }
+    if (event.key === 'Escape' && this.EditorPropertyForm) {
+      this.EditorPropertyForm.style.display = 'none';
+    }
   }
 
-  /**
-   * Make buttons and bind actions
-   * @param toEl htmlelement where append el
-   * @param actions 
-   */
-  #makeActionButtons(toEl: HTMLElement, actions: WCWYSIWYGTag[]) {
+  /** Paste as sanitized HTML (fallback: plain text) so clipboard content can't inject scripts. */
+  #handlePaste(event: ClipboardEvent): void {
+    const data = event.clipboardData;
+    if (!data) return;
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      const html = data.getData('text/html');
+      const text = data.getData('text/plain');
+      if (html) {
+        const clean = this.#sanitizedOutput(html);
+        if (clean && document.queryCommandSupported?.('insertHTML')) {
+          document.execCommand('insertHTML', false, clean);
+        } else if (text) {
+          document.execCommand('insertText', false, text);
+        }
+      } else if (text) {
+        document.execCommand('insertText', false, text);
+      }
+    } catch {
+      /* clipboard failures must not break editing */
+    }
+    this.updateContent();
+  }
+
+  #makeActionButtons(toEl: HTMLElement, actions: WCWYSIWYGTag[]): void {
     const fragment = document.createDocumentFragment();
     for (const action of actions) {
-      const button = el('button', {
-        classList: ['wc-wysiwyg_btn', `-${action.tag}`],
-        props: {
-          tabIndex: 0,
-          type: 'button',
-          textContent: action.is ? `${action.tag} is=${action.is}` : action.tag,
-          onpointerup: (event: Event) => {
-            event.stopPropagation();
-            this.#tag(action);
+      fragment.appendChild(
+        el('button', {
+          classList: ['wc-wysiwyg_btn', `-${action.tag}`],
+          props: { type: 'button', tabIndex: 0, textContent: action.is ? `${action.tag} is=${action.is}` : action.tag },
+          attrs: { 'data-hint': action.hint ?? _t(action.tag), 'aria-label': action.hint ?? _t(action.tag) },
+          events: {
+            click: (event: Event) => {
+              event.stopPropagation();
+              this.#tag(action);
+            },
           },
-        },
-        attrs: {
-          'data-hint': action.hint ?? _t(action.tag) ?? '-',
-          'aria-label': action.hint ?? _t(action.tag) ?? action.tag, // ♿ accessibility
-        },
-      });
-      fragment.appendChild(button);
+        }),
+      );
     }
     toEl.appendChild(fragment);
   }
 
-  /**
-   * Default behaviors fot tag actions
-   */
-  #tag = (tag: WCWYSIWYGTag) => {
+  #tag = (tag: WCWYSIWYGTag): void => {
     switch (tag.tag) {
       case 'audio':
         this.#Media('audio');
@@ -714,185 +771,112 @@ class WCWYSIWYG extends HTMLElement {
         break;
       default:
         if (typeof tag.method === 'function') {
-          tag.method.apply(this, tag);
+          (tag.method as (this: WCWYSIWYG, tag: WCWYSIWYGTag) => void).call(this, tag);
         } else {
           this.#wrapTag(tag, tag.is);
         }
         break;
     }
+  };
+
+  /** `prompt()` returns `null` on Cancel — treat as abort, never as content. */
+  #askUser(text: string, placeholder = ''): string | null {
+    const answer = window.prompt(text, placeholder);
+    if (answer === null) return null;
+    const trimmed = answer.trim();
+    return trimmed === '' ? null : trimmed;
   }
 
-  /**
-  * Insert spoiler
-  **/
-  #Details() {
-    const summaryTitle = prompt('Title', '');
-    if (summaryTitle === '') {
+  #isSafeMediaUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url, window.location.href);
+      return ['http:', 'https:', 'blob:', 'data:'].includes(parsed.protocol);
+    } catch {
       return false;
     }
-    const mediaEl = el('details', {
-      append: [
-        el('summary', { props: { innerText: summaryTitle } }),
-        el('p', { props: { innerText: '...' } })]
-    }
+  }
+
+  #Details(): void {
+    const summaryTitle = this.#askUser('Title', '');
+    if (summaryTitle === null || !this.EditorNode) return;
+    this.EditorNode.append(
+      el('details', {
+        append: [el('summary', { props: { textContent: summaryTitle } }), el('p', { props: { textContent: '…' } })],
+      }),
     );
-    this.EditorNode.append(mediaEl);
     this.updateContent();
   }
 
-  /**
-   * Wrap content in <tag>
-   * @param tag:WCWYSIWYGTag 
-   **/
-  #wrapTag = (tag: WCWYSIWYGTag, is: boolean | string = false) => {
-    //First check if this tag is list item
-    const listTag = ['ul', 'ol'].includes(tag.tag) ? tag.tag : false;
-    //If list tag is true - set newTag is list item as <li>
-    const newtag = listTag !== false ? 'li' : tag.tag;
-    const Selection = this.getSelection().selection;
-    let defaultOptions = {} as any;
-    if (is) {
-      defaultOptions.options = { is };
-    }
-    let tagNode = el(newtag, defaultOptions);
-
-    if (Selection !== null && Selection.rangeCount) {
-      if (listTag !== false) {
-        const list = el(listTag);
-        tagNode.replaceWith(list);
-        list.append(tagNode)
-      }
-      const range = Selection.getRangeAt(0).cloneRange();
-      range.surroundContents(tagNode);
-      Selection.removeAllRanges();
-      Selection.addRange(range);
-      //If selection has text, insert it
-      if (Selection.toString().length === 0) {
-        tagNode.innerText = tag;
-      }
+  #wrapTag = (tag: WCWYSIWYGTag, is: string | false = false): void => {
+    const listTag = tag.tag === 'ul' || tag.tag === 'ol' ? tag.tag : false;
+    const newTag = listTag !== false ? 'li' : tag.tag;
+    const tagNode = el(newTag, is ? { options: { is } } : {});
+    if (listTag !== false) {
+      const list = el(listTag);
+      list.append(tagNode);
+      this.EditorNode?.append(list);
       this.updateContent();
-      //Check if new tag has editable props
-      this.#checkEditProps({ target: tagNode, stopPropagation: () => false });
+      return;
     }
-  }
+    if (this.#wrapInTag(tagNode, tag.tag)) {
+      this.updateContent();
+      this.#checkEditProps({ target: tagNode, stopPropagation: () => false } as unknown as Event);
+    }
+  };
 
-  /**
-   * Insert <audio>
-   **/
-  #Media = (tagName: string) => {
-    const mediaSrc = prompt('src', '');
-    if (mediaSrc === '') {
-      return false;
-    }
-    const mediaEl = el(tagName, { attrs: { controls: true }, props: { src: mediaSrc } });
-    this.EditorNode.append(mediaEl);
+  #Media = (tagName: string): void => {
+    const mediaSrc = this.#askUser('src', '');
+    if (mediaSrc === null || !this.#isSafeMediaUrl(mediaSrc) || !this.EditorNode) return;
+    this.EditorNode.append(el(tagName, { attrs: { controls: true, src: mediaSrc } }));
     this.updateContent();
-  }
+  };
 
-  /**
-   * Insert <img>
-   **/
-  #Image = () => {
-    const src = prompt('IMG URL');
-    const caption = prompt('IMG caption');
+  #Image = (): void => {
+    const src = this.#askUser('IMG URL');
+    if (src === null || !this.#isSafeMediaUrl(src) || !this.EditorNode) return;
+    const caption = this.#askUser('IMG caption');
     const img = new Image();
-    if (src) {
-      img.src = src;
-    } else {
-      //@todo
-      return alert('Invalid src');
-    }
-
-    if (caption) {
-      const figure = el('figure', {
-        append: [
-          img,
-          el('figcaption', {
-            props: {
-              textContent: caption
-            }
-          })
-        ]
-      });
-
-      img.setAttribute('alt', caption);
-      this.EditorNode.appendChild(figure);
+    img.src = src;
+    img.alt = caption ?? src;
+    if (caption !== null) {
+      this.EditorNode.appendChild(
+        el('figure', { append: [img, el('figcaption', { props: { textContent: caption } })] }),
+      );
     } else {
       this.EditorNode.appendChild(img);
     }
-  }
+    this.updateContent();
+  };
 
-  /**
-   * Check available extensions in global scope
-   */
-  #checkExtensions() {
-    // Check extensions in global
-    const _WCWYSIWYG = window._WCWYSIWYG;
-    if (_WCWYSIWYG !== undefined && _WCWYSIWYG.extensions.length > 0) {
-      this.#Extensions = [];
-      for (let i = 0; i < _WCWYSIWYG.extensions.length; i++) {
-        const Extension = new _WCWYSIWYG.extensions[i](this);
-        this.#Extensions.push(Extension);
-      }
-    }
-  }
-  /**
-   * Get selection info from editor
-   * @returns editorSelection
-   */
-  getSelection() {
-    const windowSelection = window.getSelection();
-    const editorSelection = {
-      selection: null,
-      element: null,
-      text: null,
-      node: null,
-    } as {
-      selection: Selection | null,
-      element: null | HTMLElement,
-      text: null | string,
-      node: Node | null
-    };
-
-    if (windowSelection !== null) {
-      editorSelection.selection = windowSelection;
-      editorSelection.node = windowSelection.anchorNode;
-      editorSelection.element = windowSelection.anchorNode.parentElement;
-      let selectionText = windowSelection.toString();
-      if (selectionText.length > 0) {
-        editorSelection.text = selectionText;
-      }
-    }
-    return editorSelection;
-  }
-  //define WCWYSIWYG as custom element
-  static define(name = 'wc-wysiwyg') {
-    window.customElements.define(name, WCWYSIWYG);
+  // define WCWYSIWYG as custom element
+  static define(name = 'wc-wysiwyg'): void {
+    if (!window.customElements.get(name)) window.customElements.define(name, WCWYSIWYG);
   }
 }
+
 export default WCWYSIWYG;
 export const define = WCWYSIWYG.define;
 export interface WCWYSIWYGTag {
-  // The HTML tag name
-  tag: string,
-  // Optional method to be called when the tag is used
-  method?: Function,
-  // Optional hint to be displayed when the tag button is pressed\hovered
-  hint?: string,
-  // Optional string to specify the custom tag element
-  is?: string,
+  /** The HTML tag name. */
+  tag: string;
+  /** Optional method to be called when the tag is used. */
+  method?: (this: WCWYSIWYG, tag: WCWYSIWYGTag) => void;
+  /** Optional hint shown on the tag button. */
+  hint?: string;
+  /** Optional string to specify the customized built-in element. */
+  is?: string;
 }
 export interface WCWYSIWYGActions {
-  wrapTag: Function,
-  insertImageBlock: Function,
-  insertAudio: Function,
-  insertVideo: Function,
+  wrapTag: (tag: WCWYSIWYGTag) => void;
+  insertImageBlock: () => void;
+  insertAudio: () => void;
+  insertVideo: () => void;
 }
 declare global {
   interface Window {
     _WCWYSIWYG: {
-      extensions?: any[],
-      asyncExtensions?: string[],
-    }
+      extensions?: ExtensionCtor[];
+      asyncExtensions?: string[];
+    };
   }
 }

@@ -1,0 +1,18 @@
+---
+name: Feature request
+description: Suggest an editor feature or extension
+labels: [enhancement]
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should the editor do? Prefer semantic HTML tags over CSS-heavy widgets.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

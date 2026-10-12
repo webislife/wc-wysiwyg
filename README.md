@@ -1,127 +1,125 @@
 # wc-wysiwyg custom element
 
-WC-WSIWYG HTML5 Editor written in TypeScript and designed by web-componennt, support all JS frameworks and browsers.
-See full demo - [wc-wysiwyg demo](https://webislife.ru/demo/wc-wysiwyg/) list and demo of all editor features
+WC-WYSIWYG HTML5 editor written in TypeScript and designed as a web component. Works with all major JS frameworks and browsers.
+
+See full demo — [wc-wysiwyg demo](https://webislife.ru/demo/wc-wysiwyg/) with the list of all editor features.
+
+> No Shadow DOM by design: the editor inherits host-page CSS (content styles,
+> `data-content-class`, CMS themes) so inserted semantic HTML is styled by the
+> page. Scope your CSS (e.g. `.wc-wysiwyg_content …`) if you need isolation.
 
 ## Features
-✅ Multilingual support via [HTMLElement.lang](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/lang) attribute  🇷🇺/🇺🇸 supported by default
 
-✅ 🌐 Support all major browsers
-
-✅ 🚀 Reusable between all major JS frameworks
-
-✅ CSS styles for all popular HTML5 tags
-
-✅ CSS support for 🔥 in bulleted lists
-
-✅ Support for style inheritance via CSS class in the `data-content-class` attribute of emoji in bulleted lists
-
-✅ Inline actions on selected text
-
-✅ Storing value in `window.localStorage` and restoring after reload, check in comment form below
-
-✅ Eetting  editable properties of any tags, the number of tags and attributes are configurable
-
-✅ Autocomplete as you type `/` for supported tags in new paragraph
-
-✅ `Text\HTML5` view switcher
-
-✅ Clear format tag button `Ⱦ`
-
-✅ Live preview
-
-- ✅ Keyboard Shortcuts
-    - `ALT`+`SPACE` toggle the current caret pointer outside the tag
-    - `ESCAPE` close bottom editor dialog box
-
-✅ Validation `required`, `minlength`, `maxlength`, `filtertags`
-
-✅ Inserting `<audio>` element
-
-✅ Inserting `<video>` element
-
-- ✅ Suppoer extensions
-    - Color text and background editor
-    -  Emoji table
-
-🚀 Vite support for wc-wysiwyg develop 
+- ✅ Multilingual support via `lang` resolution (🇷🇺/🇬🇧 by default; `ru-RU` correctly resolves to `ru`)
+- ✅ Support for all major browsers
+- ✅ Reusable with all major JS frameworks (emits a real `input` event)
+- ✅ CSS styles for all popular HTML5 tags
+- ✅ CSS support for 🔥 emoji in bulleted lists
+- ✅ Style inheritance via CSS class in the `data-content-class` attribute
+- ✅ Inline actions on selected text
+- ✅ Value persistence in `window.localStorage` (quota-safe) with restore after reload
+- ✅ Editing editable properties of any tags; tag list and attributes are configurable
+- ✅ Autocomplete as you type `/` for supported tags in a new paragraph
+- ✅ `Text/HTML5` view switcher
+- ✅ Clear-format button `Ⱦ`
+- ✅ Live preview (sanitized)
+- ✅ Keyboard support
+  - `Alt`+`Space` moves the caret outside the current tag
+  - `Escape` closes the property dialog
+  - All toolbar buttons are native `<button>`s (Enter/Space work, `aria-label`s included)
+- ✅ Validation: `required`, `minlength`, `maxlength`, `filtertags`
+- ✅ Inserting `<audio>` / `<video>` elements (URL-validated, `Cancel` safe)
+- ✅ Support for extensions
+  - Color text/background editor
+  - Emoji table (clipboard with HTTP fallback)
+  - Preset list
+- ✅ XSS hardening: output sanitizer strips `script`/`iframe`/`object`, `on*` handlers, and `javascript:` URLs
+- 🚀 Vite-powered build (`ES` + `UMD` + CSS + `.d.ts`, zero runtime dependencies)
 
 ## Install
 
-```
+```bash
 npm i wc-wysiwyg-editor --save
+```
+
+## Usage
+
+Include the styles and the script (extension registration first, editor second):
+
+```html
+<link rel="stylesheet" href="node_modules/wc-wysiwyg-editor/dist/style.css" />
+<script type="module">
+  import 'wc-wysiwyg-editor/dist/wc-wysiwyg.es.js';
+  // optional extensions (each self-registers; load before defining if you
+  // rely on the legacy window._WCWYSIWYG queue, otherwise import anywhere):
+  // import 'wc-wysiwyg-editor/dist/extensions/...' (if published separately)
+</script>
+```
+
+Source-layout usage (this repo):
+
+```javascript
+await Promise.all([
+  import('./src/extensions/colorerDialog.ts'),
+  import('./src/extensions/emojiDialog.ts'),
+  import('./src/extensions/presetList.ts'),
+]);
+const { define } = await import('./src/wc-wysiwyg.ts');
+define(); // registers <wc-wysiwyg>
+```
+
+HTML:
+
+```html
+<wc-wysiwyg
+  id="wc-demo-comment"
+  data-allow-tags="strong,u,i,b,q,blockquote,a,img,pre"
+  data-storage="demo-comment"
+  data-hide-bottom-actions="1"
+  required
+  minlength="5"
+  maxlength="500"
+>
+  <textarea>your comment</textarea>
+</wc-wysiwyg>
+```
+
+Listening to changes (framework-friendly):
+
+```javascript
+document.querySelector('wc-wysiwyg').addEventListener('input', (e) => {
+  console.log(e.target.value); // sanitized HTML
+});
 ```
 
 ## Commands
 
-- Available package commands
-
-- Build scss styles
-```
-npm run sass
-```
-- Compile TypeScript
-```
-npm run tsc
-```
-- Minify code with babel-minify after TypeScript compile
-```
-npm run babel-minify
-```
-- build all stpes 1.sass 2.tsc 3.babel-minif
-
-```
-npm run build
-```
-- start vite serve mode for wc-wysiwyg development
-
-## Integration WC-WYSIWYG element demo
-<!--
-```
-<wc-wysiwyg value="foo">
-  <textarea></textarea>
-</wc-wysiwyg>
-```
--->
-First need integrate wc-wysiwyg styles, you have 2 way, vanila css in `dist/sass` or scss in `src/sass` just include in your web project
-
-Second, include JS and define custom element
-```javascript
-import('/src/components/wc-wysiwyg.js').then(esm => {
-    //you can pass any name into define fn
-    esm.define();
-});
+```bash
+npm run dev        # vite dev server (demo in index.html)
+npm run typecheck  # tsc --noEmit
+npm run build      # vite build (ES + UMD + CSS) + .d.ts into dist/
+npm run preview    # preview the production build
 ```
 
-For use extensions, load before wc-wysiwig
-```javascript
-Promise.all([
-    import('./src/extensions/colorerDialog.ts'),
-    import('./src/extensions/emojiDialog.ts'),
-    import('./src/extensions/presetList.ts'),
-]).then(modules => {
-    import('./src/wc-wysiwyg.ts').then(esm => esm.define());
-});
+`dist/` is git-ignored. CI rebuilds it on every pull request and release
+and uploads it as a workflow artifact; `npm publish` ships the CI-built files.
 
-```
-And use in HTML
+## Security model
 
-```html
-<wc-wysiwyg id="wc-demo-comment"
-    data-allow-tags="strong,u,i,b,q,blockquote,a,img,pre"
-    data-storage="demo-comment"
-    data-hide-bottom-actions="1"
-    is="wc-wysiwyg"
-    required
-    minlength="5"
-    maxlength="500">
-    <textarea>your comment</textarea>
-</wc-wysiwyg>
-```
+User-controlled strings (initial `<textarea>` value, `localStorage` restore,
+preview element, pasted HTML) pass through `src/core/sanitize.ts`:
 
+- blocked elements (`script`, `iframe`, `object`, `embed`, … plus per-instance
+  `filtertags`) are removed,
+- `on*` attributes, `javascript:` URLs, and `srcdoc` are stripped,
+- live typing is not rewritten (caret preservation); the sanitized copy is
+  what lands in `value`, `localStorage`, and the preview.
 
-See full demo - [wc-wysiwyg demo](https://webislife.ru/demo/wc-wysiwyg/) list and demo of all editor features
+`filtertags` violations are additionally reported by `checkValidity()`.
 
-Dont forgot star on git! Thank you! Enojoy!
+## Contributing
 
-Dev by strokoff - make web, not war)
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Changes are described in
+[CHANGELOG.md](./CHANGELOG.md). Please star the repo if it helps — enjoy!
+
+Dev by strokoff — make web, not war.

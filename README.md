@@ -4,9 +4,9 @@ WC-WYSIWYG HTML5 editor written in TypeScript and designed as a web component. W
 
 See full demo — [wc-wysiwyg demo](https://webislife.ru/demo/wc-wysiwyg/) with the list of all editor features.
 
-> No Shadow DOM by design: the editor inherits host-page CSS (content styles,
-> `data-content-class`, CMS themes) so inserted semantic HTML is styled by the
-> page. Scope your CSS (e.g. `.wc-wysiwyg_content …`) if you need isolation.
+> No Shadow DOM by design. Built-in content styles are scoped to
+> `.wc-wysiwyg_content`, so they do not affect matching elements elsewhere on
+> the page. Host-page CSS can still cascade into the editor.
 
 ## Features
 

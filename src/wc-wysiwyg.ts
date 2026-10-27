@@ -71,11 +71,9 @@ export interface ScopedSelection {
 /**
  * `wc-wysiwyg` — lightweight contentEditable WYSIWYG custom element.
  *
- * NOTE: intentionally **no Shadow DOM**. The editor is designed to inherit
- * host-page CSS (content styles, `data-content-class`, CMS themes) and to
- * let inserted semantic HTML (`pre`, `figure`, `details`, …) be styled by
- * the page. The trade-off is style leakage in both directions; scope the
- * page CSS (e.g. `.wc-wysiwyg_content …`) if isolation is required.
+ * NOTE: intentionally **no Shadow DOM**. Host-page CSS can still cascade into
+ * the editor, while built-in content styles are scoped to `.wc-wysiwyg_content`
+ * so they do not affect matching elements elsewhere on the page.
  */
 class WCWYSIWYG extends HTMLElement {
   /** Tags included in the action bar. */

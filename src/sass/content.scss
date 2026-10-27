@@ -1,4 +1,4 @@
-:root {
+.wc-wysiwyg {
     // orange
     --color-orange-50: #FFF8E1;
     --color-orange-100: #FFF8E1;
@@ -62,10 +62,11 @@
     // blue-light
     --color-blue-light-50: #E1F5FE;
     --color-blue-light-100: #B3E5FC;
-    }
-body {
-    font-family: Arial, Helvetica, sans-serif
 }
+
+.wc-wysiwyg .wc-wysiwyg_content {
+    font-family: Arial, Helvetica, sans-serif;
+
 h1,h2,h3,h4,h5,h6 {
     font-family: Georgia, 'Times New Roman', Times, serif;
     font-weight: normal;
@@ -479,4 +480,5 @@ button, .btn {
 }
 .-text-left {
     text-align: left;
+}
 }

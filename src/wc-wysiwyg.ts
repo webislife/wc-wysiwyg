@@ -133,13 +133,13 @@ class WCWYSIWYG extends HTMLElement {
     super();
     // Drain synchronously-registered extensions (import order independent).
     this.#PendingExtensionCtors = drainExtensions();
-    this.classList.add('wc-wysiwyg');
   }
-
+  
   // ------------------------------------------------------------------ setup
-
+  
   connectedCallback(): void {
     if (this.#Connected) return;
+    this.classList.add('wc-wysiwyg');
 
     this.#loadAsyncExtensions();
     this.#initTextarea();

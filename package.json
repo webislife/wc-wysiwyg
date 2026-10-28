@@ -1,6 +1,6 @@
 {
     "name": "wc-wysiwyg-editor",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "description": "WYWSIWYG HTML5 Editor written in ts and designed by web-componennt, support all JS frameworks and browsers",
     "main": "dist/wc-wysiwyg.js",
     "type": "module",

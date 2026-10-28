@@ -1,60 +1,43 @@
 {
-  "name": "wc-wysiwyg-editor",
-  "version": "1.0.6",
-  "description": "WYSIWYG HTML5 editor written in TypeScript as a dependency-free web component, works with all JS frameworks and browsers",
-  "type": "module",
-  "main": "./dist/wc-wysiwyg.umd.cjs",
-  "module": "./dist/wc-wysiwyg.es.js",
-  "types": "./dist/wc-wysiwyg.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/wc-wysiwyg.d.ts",
-      "import": "./dist/wc-wysiwyg.es.js",
-      "require": "./dist/wc-wysiwyg.umd.cjs"
+    "name": "wc-wysiwyg-editor",
+    "version": "1.0.7",
+    "description": "WYWSIWYG HTML5 Editor written in ts and designed by web-componennt, support all JS frameworks and browsers",
+    "main": "dist/wc-wysiwyg.js",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build && npm run build:types",
+        "build:types": "tsc --emitDeclarationOnly --outDir dist",
+        "typecheck": "tsc --noEmit",
+        "preview": "vite preview"
     },
-    "./dist/style.css": "./dist/style.css",
-    "./package.json": "./package.json"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md"
-  ],
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build && npm run build:types",
-    "build:types": "tsc --emitDeclarationOnly --outDir dist",
-    "typecheck": "tsc --noEmit",
-    "preview": "vite preview"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/webislife/wc-wysiwyg.git"
-  },
-  "keywords": [
-    "web-component",
-    "custom-element",
-    "html5 editor",
-    "wysiwyg",
-    "html5",
-    "typescript"
-  ],
-  "author": "srokoff",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/webislife/wc-wysiwyg/issues"
-  },
-  "homepage": "https://github.com/webislife/wc-wysiwyg#readme",
-  "publishConfig": {
-    "access": "public"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "devDependencies": {
-    "sass": "^1.62.1",
-    "typescript": "^5.4.0",
-    "vite": "^5.4.0"
-  }
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/webislife/wc-wysiwyg.git"
+    },
+    "keywords": [
+        "web-component",
+        "custom-element",
+        "html5 editor",
+        "wysiwyg",
+        "html5",
+        "esnext",
+        "typescript"
+    ],
+    "author": "srokoff",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/webislife/wc-wysiwyg/issues"
+    },
+    "homepage": "https://github.com/webislife/wc-wysiwyg#readme",
+    "devDependencies": {
+        "babel-minify": "^0.5.2",
+        "node-sass": "^8.0.0",
+        "sass": "^1.62.1",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.16"
+    },
+    "publishConfig": {
+        "@webislife:registry": "https://npm.pkg.github.com"
+    }
 }

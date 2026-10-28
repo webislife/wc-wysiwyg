@@ -5,11 +5,11 @@
     "main": "dist/wc-wysiwyg.js",
     "type": "module",
     "scripts": {
-        "vite": "./node_modules/vite/bin/vite.js",
-        "sass": "./node_modules/node-sass/bin/node-sass ./src -o ./dist",
-        "tsc": "./node_modules/.bin/tsc",
-        "babel-minify": " ./node_modules/.bin/minify ./dist --mangle=false --out-dir ./dist --sourceType=module",
-        "build": "npm run sass && npm run tsc && npm run babel-minify"
+        "dev": "vite",
+        "build": "vite build && npm run build:types",
+        "build:types": "tsc --emitDeclarationOnly --outDir dist",
+        "typecheck": "tsc --noEmit",
+        "preview": "vite preview"
     },
     "repository": {
         "type": "git",
